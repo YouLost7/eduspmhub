@@ -41,9 +41,11 @@ const SERVER_DIR = path.dirname(fileURLToPath(import.meta.url));
 const LICENSE_DIR = path.join(SERVER_DIR, "uploads", "educator-licenses");
 const LESSON_PDF_DIR = path.join(SERVER_DIR, "uploads", "lesson-pdfs");
 const LESSON_VIDEO_DIR = path.join(SERVER_DIR, "uploads", "lesson-videos");
+const PROFILE_PHOTO_DIR = path.join(SERVER_DIR, "uploads", "profile-photos");
 mkdirSync(LICENSE_DIR, { recursive: true });
 mkdirSync(LESSON_PDF_DIR, { recursive: true });
 mkdirSync(LESSON_VIDEO_DIR, { recursive: true });
+mkdirSync(PROFILE_PHOTO_DIR, { recursive: true });
 
 function licenseExtFromMime(mime) {
   const m = String(mime || "").toLowerCase();
@@ -61,6 +63,7 @@ function extFromOriginalName(name) {
   if (e === "pdf") return ".pdf";
   if (e === "jpg" || e === "jpeg" || e === "jfif") return ".jpg";
   if (e === "png") return ".png";
+  if (e === "webp") return ".webp";
   if (e === "mp4") return ".mp4";
   if (e === "webm") return ".webm";
   return "";
@@ -95,6 +98,41 @@ function isSafeLicenseStorageKey(name) {
       name
     )
   );
+}
+
+function resolvedAvatarMeta(file) {
+  const mime = String(file.mimetype || "").toLowerCase();
+  if (mime === "image/jpeg" || mime === "image/jpg" || mime === "image/pjpeg") {
+    return { ext: ".jpg", mime: "image/jpeg" };
+  }
+  if (mime === "image/png") return { ext: ".png", mime: "image/png" };
+  if (mime === "image/webp") return { ext: ".webp", mime: "image/webp" };
+  const generic =
+    mime === "application/octet-stream" ||
+    mime === "" ||
+    mime === "binary/octet-stream";
+  if (generic) {
+    const oe = extFromOriginalName(file.originalname);
+    if (oe === ".jpg") return { ext: ".jpg", mime: "image/jpeg" };
+    if (oe === ".png") return { ext: ".png", mime: "image/png" };
+    if (oe === ".webp") return { ext: ".webp", mime: "image/webp" };
+  }
+  return null;
+}
+
+function isSafeAvatarStorageKey(name) {
+  return (
+    typeof name === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(jpg|png|webp)$/i.test(
+      name
+    )
+  );
+}
+
+async function unlinkAvatarFile(key) {
+  if (!isSafeAvatarStorageKey(key)) return;
+  const abs = path.join(PROFILE_PHOTO_DIR, key);
+  await unlink(abs).catch(() => {});
 }
 
 const licenseUpload = multer({
@@ -1399,6 +1437,43 @@ function runLessonVideoUpload(req, res, next) {
   });
 }
 
+const profilePhotoUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => {
+      cb(null, PROFILE_PHOTO_DIR);
+    },
+    filename: (_req, file, cb) => {
+      const meta = resolvedAvatarMeta(file);
+      if (!meta) {
+        cb(new Error("Only JPEG, PNG, or WebP images are allowed"));
+        return;
+      }
+      cb(null, `${randomUUID()}${meta.ext}`);
+    },
+  }),
+  limits: { fileSize: 3 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (resolvedAvatarMeta(file)) cb(null, true);
+    else
+      cb(
+        new Error(
+          "Only JPEG, PNG, or WebP uploads are allowed (use .jpg, .png, or .webp)."
+        )
+      );
+  },
+});
+
+function runProfilePhotoUpload(req, res, next) {
+  profilePhotoUpload.single("photo")(req, res, (err) => {
+    if (err) {
+      let msg = err.message || "Upload failed";
+      if (err.code === "LIMIT_FILE_SIZE") msg = "Photo too large (max 3 MB)";
+      return res.status(400).json({ error: msg });
+    }
+    next();
+  });
+}
+
 app.post("/api/educator/license", requireAuth, runLicenseUpload, async (req, res) => {
   try {
     if (!req.file) {
@@ -1434,6 +1509,89 @@ app.post("/api/educator/license", requireAuth, runLicenseUpload, async (req, res
     console.error(e);
     if (req.file?.path) await unlink(req.file.path).catch(() => {});
     res.status(500).json({ error: "Could not save licence upload" });
+  }
+});
+
+app.post("/api/profile/photo", requireAuth, runProfilePhotoUpload, async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        error: 'Missing file: use multipart field name "photo" (JPEG, PNG, or WebP, max 3 MB).',
+      });
+    }
+    const users = await loadUsers();
+    const idx = users.findIndex((u) => u.id === req.session.userId);
+    if (idx === -1) {
+      await unlink(req.file.path).catch(() => {});
+      return res.status(404).json({ error: "User not found" });
+    }
+    const u = users[idx];
+    if (u.role !== "student" && u.role !== "educator") {
+      await unlink(req.file.path).catch(() => {});
+      return res.status(403).json({
+        error: "Profile photo is only for student or educator accounts.",
+      });
+    }
+    const meta = resolvedAvatarMeta(req.file);
+    const oldKey = u.avatarStorageKey;
+    u.avatarStorageKey = req.file.filename;
+    u.avatarMimeType = meta?.mime || req.file.mimetype || "image/jpeg";
+    u.avatarUploadedAt = new Date().toISOString();
+    users[idx] = u;
+    await saveUsers(users);
+    if (oldKey && oldKey !== req.file.filename && isSafeAvatarStorageKey(oldKey)) {
+      await unlinkAvatarFile(oldKey);
+    }
+    res.json({ user: toPublicUser(u) });
+  } catch (e) {
+    console.error(e);
+    if (req.file?.path) await unlink(req.file.path).catch(() => {});
+    res.status(500).json({ error: "Could not save profile photo" });
+  }
+});
+
+app.delete("/api/profile/photo", requireAuth, async (req, res) => {
+  try {
+    const users = await loadUsers();
+    const idx = users.findIndex((u) => u.id === req.session.userId);
+    if (idx === -1) return res.status(404).json({ error: "User not found" });
+    const u = users[idx];
+    const oldKey = u.avatarStorageKey;
+    delete u.avatarStorageKey;
+    delete u.avatarMimeType;
+    delete u.avatarUploadedAt;
+    users[idx] = u;
+    await saveUsers(users);
+    if (oldKey && isSafeAvatarStorageKey(oldKey)) await unlinkAvatarFile(oldKey);
+    res.json({ user: toPublicUser(u) });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Could not remove photo" });
+  }
+});
+
+app.get("/api/profile/photo/:userId", requireAuth, async (req, res) => {
+  try {
+    const userId =
+      typeof req.params.userId === "string" ? req.params.userId.trim() : req.params.userId;
+    const users = await loadUsers();
+    const target = findUserById(users, userId);
+    if (!target?.avatarStorageKey || !isSafeAvatarStorageKey(target.avatarStorageKey)) {
+      return res.status(404).end();
+    }
+    const abs = path.join(PROFILE_PHOTO_DIR, target.avatarStorageKey);
+    if (!existsSync(abs)) {
+      return res.status(404).end();
+    }
+    const mime = target.avatarMimeType || "image/jpeg";
+    res.setHeader("Content-Type", mime);
+    res.setHeader("Cache-Control", "private, max-age=300");
+    res.sendFile(abs, (err) => {
+      if (err && !res.headersSent) res.status(500).end();
+    });
+  } catch (e) {
+    console.error(e);
+    if (!res.headersSent) res.status(500).end();
   }
 });
 

@@ -66,6 +66,9 @@ export function toPublicUser(user) {
     educatorSubject: user.educatorSubject || "",
     educatorBio: user.educatorBio || "",
     createdAt: user.createdAt,
+    /** Profile face photo — use GET /api/profile/photo/:id with session cookie */
+    hasProfilePhoto: Boolean(user.avatarStorageKey),
+    avatarUploadedAt: user.avatarUploadedAt || null,
     /** Educator: submitted certified licence file (PDF/JPEG/PNG) pending or on file */
     hasLicenseDocument: Boolean(user.licenseStorageKey),
     licenseUploadedAt: user.licenseUploadedAt || null,
@@ -84,5 +87,7 @@ export function toPublicTutorProfile(user) {
     educatorInstitution: user.educatorInstitution || "",
     educatorBio: user.educatorBio || "",
     createdAt: user.createdAt || null,
+    hasProfilePhoto: Boolean(user.avatarStorageKey),
+    avatarUploadedAt: user.avatarUploadedAt || null,
   };
 }

@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { apiJson } from "../api.js";
 import { useAuth } from "../context/AuthContext.jsx";
+import { profilePhotoSrc } from "../lib/profilePhoto.js";
 
 export default function TutorProfilePage() {
   const { tutorId } = useParams();
@@ -62,12 +63,22 @@ export default function TutorProfilePage() {
           transition={{ duration: 0.25 }}
         >
           <div className="tutor-profile-head">
-            <div className="tutor-profile-avatar" aria-hidden="true">
-              {String(tutor.fullName || "?")
-                .trim()
-                .charAt(0)
-                .toUpperCase()}
-            </div>
+            {tutor.hasProfilePhoto ? (
+              <img
+                className="tutor-profile-photo"
+                src={profilePhotoSrc(tutor.id, tutor.avatarUploadedAt)}
+                alt=""
+                width={56}
+                height={56}
+              />
+            ) : (
+              <div className="tutor-profile-avatar" aria-hidden="true">
+                {String(tutor.fullName || "?")
+                  .trim()
+                  .charAt(0)
+                  .toUpperCase()}
+              </div>
+            )}
             <div className="tutor-profile-head-text">
               <h2 className="tutor-profile-name">{tutor.fullName}</h2>
               <p className="tutor-profile-line">

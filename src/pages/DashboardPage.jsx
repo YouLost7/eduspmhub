@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { StudyTipBanner } from "../components/StudyTipBanner.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { apiJson } from "../api.js";
+import { profilePhotoSrc } from "../lib/profilePhoto.js";
 
 const listVariants = {
   hidden: { opacity: 0 },
@@ -361,7 +362,17 @@ export default function DashboardPage() {
                         to={`/tutor/${encodeURIComponent(e.id)}`}
                         className="educator-link"
                       >
-                        <div className={`avatar ${e.avatarClass || ""}`.trim()} />
+                        {e.hasProfilePhoto ? (
+                          <img
+                            className="educator-photo-thumb"
+                            src={profilePhotoSrc(e.id, e.avatarUploadedAt)}
+                            alt=""
+                            width={66}
+                            height={66}
+                          />
+                        ) : (
+                          <div className={`avatar ${e.avatarClass || ""}`.trim()} />
+                        )}
                         <h4>{e.name}</h4>
                         <p className="educator-sub">
                           {e.subject}

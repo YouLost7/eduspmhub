@@ -219,7 +219,23 @@
 }
 
 .topbar .top-actions .user-chip {
-  max-width: 200px;
+  max-width: min(280px, 46vw);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.user-chip-photo {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid #cbd5e1;
+}
+
+.user-chip-label {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -728,6 +744,15 @@
   justify-content: center;
 }
 
+.tutor-profile-photo {
+  flex: 0 0 auto;
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 12px;
+  object-fit: cover;
+  border: 1px solid #e4eaf4;
+}
+
 .tutor-profile-head-text {
   min-width: 0;
 }
@@ -795,3 +820,37 @@
   color: #1d4ed8;
 }
 
+.profile-photo-preview-wrap {
+  margin: 0.5rem 0 0.75rem;
+}
+
+.profile-photo-preview {
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid #e4eaf4;
+  display: block;
+}
+
+.profile-photo-actions {
+  margin-top: 0.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.educator-photo-thumb {
+  width: 66px;
+  height: 66px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid #e4eaf4;
+  margin: 0 auto 0.35rem;
+  display: block;
+}
+
+.educator-link .educator-photo-thumb {
+  margin-bottom: 0.45rem;
+}

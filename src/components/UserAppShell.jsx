@@ -1,6 +1,7 @@
 import { Link, NavLink, Outlet } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useAuth } from "../context/AuthContext.jsx";
+import { profilePhotoSrc } from "../lib/profilePhoto.js";
 
 export default function UserAppShell() {
   const { user, logout } = useAuth();
@@ -33,12 +34,23 @@ export default function UserAppShell() {
           </nav>
           <div className="top-actions user-app-user">
             <span className="user-chip" title={user?.email}>
-              {user?.fullName || "User"}
-              {isEducator ? (
-                <span className="role-pill role-pill--edu">Educator</span>
-              ) : (
-                <span className="role-pill">Student</span>
-              )}
+              {user?.hasProfilePhoto ? (
+                <img
+                  className="user-chip-photo"
+                  src={profilePhotoSrc(user.id, user.avatarUploadedAt)}
+                  alt=""
+                  width={36}
+                  height={36}
+                />
+              ) : null}
+              <span className="user-chip-label">
+                {user?.fullName || "User"}
+                {isEducator ? (
+                  <span className="role-pill role-pill--edu">Educator</span>
+                ) : (
+                  <span className="role-pill">Student</span>
+                )}
+              </span>
             </span>
             <button type="button" className="link-btn" onClick={() => logout()}>
               Log out

@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
-import { friendlyNonJsonApiMessage } from "../api.js";
+import { friendlyNonJsonApiMessage, apiJson } from "../api.js";
 import { useAuth } from "../context/AuthContext.jsx";
+import { profilePhotoSrc } from "../lib/profilePhoto.js";
 
 export default function ProfilePage() {
   const { user, updateProfile, refreshMe } = useAuth();
@@ -17,6 +18,10 @@ export default function ProfilePage() {
   const [licenseBusy, setLicenseBusy] = useState(false);
   const [licenseStatus, setLicenseStatus] = useState({ text: "", ok: true });
   const licenseInputRef = useRef(null);
+  const [photoFile, setPhotoFile] = useState(null);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [photoStatus, setPhotoStatus] = useState({ text: "", ok: true });
+  const photoInputRef = useRef(null);
 
   const isEducator = user?.role === "educator";
 
@@ -106,6 +111,66 @@ export default function ProfilePage() {
     }
   }
 
+  async function uploadProfilePhoto() {
+    setPhotoStatus({ text: "", ok: true });
+    if (!photoFile) {
+      setPhotoStatus({ text: "Choose a JPEG, PNG, or WebP image first.", ok: false });
+      return;
+    }
+    setPhotoBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append("photo", photoFile);
+      const res = await fetch("/api/profile/photo", {
+        method: "POST",
+        credentials: "include",
+        body: fd,
+      });
+      const raw = await res.text();
+      let data = {};
+      try {
+        data = raw ? JSON.parse(raw) : {};
+      } catch {
+        data = {};
+      }
+      if (!res.ok) {
+        const htmlHint = friendlyNonJsonApiMessage(raw);
+        const msg =
+          data.error ||
+          htmlHint ||
+          (res.status === 413
+            ? "Photo too large (max 3 MB)."
+            : `Upload failed (${res.status}).`);
+        setPhotoStatus({ text: msg, ok: false });
+        return;
+      }
+      await refreshMe();
+      setPhotoFile(null);
+      if (photoInputRef.current) photoInputRef.current.value = "";
+      setPhotoStatus({ text: "Profile photo updated.", ok: true });
+    } catch {
+      setPhotoStatus({ text: "Network error — try again.", ok: false });
+    } finally {
+      setPhotoBusy(false);
+    }
+  }
+
+  async function removeProfilePhoto() {
+    setPhotoStatus({ text: "", ok: true });
+    setPhotoBusy(true);
+    try {
+      await apiJson("/api/profile/photo", { method: "DELETE" });
+      await refreshMe();
+      setPhotoFile(null);
+      if (photoInputRef.current) photoInputRef.current.value = "";
+      setPhotoStatus({ text: "Profile photo removed.", ok: true });
+    } catch (e) {
+      setPhotoStatus({ text: e.message || "Could not remove photo.", ok: false });
+    } finally {
+      setPhotoBusy(false);
+    }
+  }
+
   return (
     <div>
       <div className={`user-page-intro${isEducator ? " user-page-intro--educator" : ""}`}>
@@ -129,6 +194,68 @@ export default function ProfilePage() {
           </p>
         )}
       </div>
+
+      <motion.section
+        className="profile-form section-block"
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+      >
+        <h2 style={{ marginTop: 0, fontSize: "1.1rem" }}>Profile photo</h2>
+        <p className="field-hint">
+          Optional — a clear photo of your face helps classmates and students recognise you.
+          JPEG, PNG, or WebP, max 3 MB. Only signed-in users on EduSPM Hub can load this image
+          (it is not a public internet link without your session).
+        </p>
+        {user?.hasProfilePhoto ? (
+          <div className="profile-photo-preview-wrap">
+            <img
+              className="profile-photo-preview"
+              src={profilePhotoSrc(user.id, user.avatarUploadedAt)}
+              alt=""
+              width={140}
+              height={140}
+            />
+          </div>
+        ) : (
+          <p className="field-hint">No photo on file yet.</p>
+        )}
+        <div className="field">
+          <label htmlFor="pf-photo">Upload image</label>
+          <input
+            ref={photoInputRef}
+            id="pf-photo"
+            name="photo"
+            type="file"
+            accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+            disabled={photoBusy}
+            onChange={(e) => setPhotoFile(e.target.files?.[0] || null)}
+          />
+        </div>
+        <div className="profile-photo-actions">
+          <button
+            type="button"
+            className="solid-btn"
+            disabled={photoBusy}
+            onClick={uploadProfilePhoto}
+          >
+            {photoBusy ? "Working…" : user?.hasProfilePhoto ? "Replace photo" : "Upload photo"}
+          </button>
+          {user?.hasProfilePhoto ? (
+            <button
+              type="button"
+              className="outline-btn"
+              style={{ marginLeft: "0.5rem", color: "#b91c1c", borderColor: "#fecaca" }}
+              disabled={photoBusy}
+              onClick={removeProfilePhoto}
+            >
+              Remove photo
+            </button>
+          ) : null}
+        </div>
+        {photoStatus.text ? (
+          <p className={photoStatus.ok ? "form-success" : "form-error"}>{photoStatus.text}</p>
+        ) : null}
+      </motion.section>
 
       {isEducator && (
         <motion.section

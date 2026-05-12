@@ -80,6 +80,8 @@ export async function buildFeaturedPayload(sessionUserId) {
         subject: u.educatorSubject || "SPM",
         institution: u.educatorInstitution || "Malaysia",
         publishedCourses: publishedCountByEducator[u.id] || 0,
+        hasProfilePhoto: Boolean(u.avatarStorageKey),
+        avatarUploadedAt: u.avatarUploadedAt || null,
         avatarClass: AVATAR_CYCLE[h % AVATAR_CYCLE.length],
         browseQuery: `subject=${encodeURIComponent(u.educatorSubject || "Mathematics")}`,
         source: u.verified ? "platform" : "platform_pending",
