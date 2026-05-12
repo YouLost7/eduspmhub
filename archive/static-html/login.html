@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Login | EduSPM Hub</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./auth.css" />
+  </head>
+  <body>
+    <main class="auth-shell">
+      <section class="auth-card">
+        <a class="brand" href="./index.html">EduSPM Hub</a>
+        <h1>Welcome Back</h1>
+        <p class="subtext">Login to continue learning on your SPM dashboard.</p>
+
+        <form id="loginForm">
+          <div>
+            <label for="email">Email</label>
+            <input
+              id="email"
+              name="email"
+              type="email"
+              placeholder="you@example.com"
+              required
+            />
+          </div>
+
+          <div>
+            <label for="password">Password</label>
+            <input
+              id="password"
+              name="password"
+              type="password"
+              placeholder="Enter your password"
+              required
+            />
+          </div>
+
+          <button class="btn" type="submit">Login</button>
+          <p id="statusMessage" class="status"></p>
+        </form>
+
+        <p class="helper">
+          No account yet? <a href="./register.html">Create one here</a>
+        </p>
+      </section>
+    </main>
+
+    <script src="./auth.js"></script>
+  </body>
+</html>

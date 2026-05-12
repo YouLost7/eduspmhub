@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>EduSPM Hub - Objective 1 Prototype</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container">
+        <nav class="nav">
+          <h1 class="logo">EduSPM Hub</h1>
+          <ul class="nav-links">
+            <li><a href="#features">Features</a></li>
+            <li><a href="#resources">Resources</a></li>
+            <li><a href="#cta">Get Started</a></li>
+            <li><a href="./login.html">Login</a></li>
+            <li><a href="./register.html">Register</a></li>
+          </ul>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="container hero-grid">
+          <div class="hero-content">
+            <p class="badge">Objective 1 Focus</p>
+            <h2>One integrated SPM learning platform for students</h2>
+            <p class="hero-text">
+              Access notes, learning videos, and tuition services in one place.
+              The platform is structured, simple to use, and built for Sijil
+              Pelajaran Malaysia (SPM) learners.
+            </p>
+            <div class="hero-actions">
+              <a class="btn" href="#resources">Explore Learning Content</a>
+              <a class="btn ghost" href="#features">View Platform Features</a>
+            </div>
+            <div class="stats">
+              <article class="stat">
+                <strong>30+</strong>
+                <span>Sample notes</span>
+              </article>
+              <article class="stat">
+                <strong>120+</strong>
+                <span>Video modules</span>
+              </article>
+              <article class="stat">
+                <strong>50+</strong>
+                <span>Available tutors</span>
+              </article>
+            </div>
+          </div>
+          <div class="hero-card">
+            <p class="card-label">Inside One Ecosystem</p>
+            <h3>Everything SPM students need in a single dashboard</h3>
+            <ul>
+              <li>Notes by subject, chapter, and exam priority</li>
+              <li>Video lessons sorted by beginner to advanced levels</li>
+              <li>Tuition booking with verified tutor profiles</li>
+            </ul>
+            <div class="hero-card-footer">Built to be simple, fast, and structured.</div>
+          </div>
+        </div>
+      </section>
+
+      <section id="features" class="section">
+        <div class="container">
+          <h2>Core Features For Objective 1</h2>
+          <p class="section-subtext">
+            These are the first features needed to satisfy your first objective.
+          </p>
+          <div class="cards">
+            <article class="card">
+              <p class="card-icon">01</p>
+              <h3>SPM Notes Library</h3>
+              <p>
+                Organized notes for core subjects so students can revise faster.
+              </p>
+            </article>
+            <article class="card">
+              <p class="card-icon">02</p>
+              <h3>Video Learning Center</h3>
+              <p>
+                Curated video lessons that help students understand difficult
+                chapters visually.
+              </p>
+            </article>
+            <article class="card">
+              <p class="card-icon">03</p>
+              <h3>Tuition Services</h3>
+              <p>
+                Match students with tutors for one-to-one or small group
+                sessions.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section id="resources" class="section alt">
+        <div class="container">
+          <div class="resource-heading">
+            <h2>Learning hub resources</h2>
+            <label for="subjectFilter">Filter by subject:</label>
+            <select id="subjectFilter">
+              <option value="all">All Subjects</option>
+              <option value="Bahasa Melayu">Bahasa Melayu</option>
+              <option value="English">English</option>
+              <option value="Mathematics">Mathematics</option>
+              <option value="Science">Science</option>
+            </select>
+          </div>
+
+          <div id="resourceList" class="resource-list"></div>
+        </div>
+      </section>
+
+      <section id="cta" class="section">
+        <div class="container cta">
+          <h2>Ready to build the full platform?</h2>
+          <p>
+            This version covers Objective 1. Next, we can add Objective 2 (DRM
+            + paywall) and Objective 3 (educator marketplace) in phases.
+          </p>
+          <button id="demoBtn" class="btn secondary">Join Early Waitlist</button>
+          <p id="demoMessage" class="demo-message"></p>
+        </div>
+      </section>
+
+      <section id="educatorTools" class="section alt">
+        <div class="container educator-tools">
+          <h2>Educator tools</h2>
+          <p class="section-subtext">
+            Educators must be verified before teaching tools (like adding courses)
+            are available.
+          </p>
+          <div class="tools-row">
+            <button id="addCourseBtn" class="btn secondary" type="button" disabled>
+              Add Course (Locked)
+            </button>
+            <div id="educatorStatus" class="educator-status"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container">
+        <p>&copy; 2026 EduSPM Hub. Built for SPM learners in Malaysia.</p>
+      </div>
+    </footer>
+
+    <script src="./script.js"></script>
+    <script src="./platform-auth.js"></script>
+  </body>
+</html>

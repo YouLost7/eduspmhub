@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sign Up | EduSPM Hub</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./auth.css" />
+  </head>
+  <body class="auth-page auth-page--register">
+    <header class="auth-topbar">
+      <div class="auth-topbar-inner">
+        <a class="auth-logo" href="./index.html">
+          <span class="auth-logo-icon" aria-hidden="true">▶</span>
+          <span class="auth-logo-text"
+            ><span class="auth-logo-edu">Edu</span><span class="auth-logo-spm">SPM</span>
+            <span class="auth-logo-hub">Hub</span></span
+          >
+        </a>
+        <nav class="auth-topnav" aria-label="Primary">
+          <a href="./index.html">Home</a>
+          <a href="./platform.html">Browse</a>
+          <a href="#">About</a>
+          <a href="#">Contact</a>
+        </nav>
+        <div class="auth-topbar-actions">
+          <a class="auth-link" href="./login.html">Log In</a>
+        </div>
+      </div>
+    </header>
+
+    <main class="auth-main">
+      <h1 class="page-title">Sign Up</h1>
+
+      <section class="auth-card auth-card--register">
+        <p class="subtext subtext--tight">
+          Choose your account type. Students use a school email; educators can
+          use school or personal email. Teaching features unlock after
+          verification.
+        </p>
+
+        <div class="role-tabs" role="tablist" aria-label="Account type">
+          <button
+            type="button"
+            class="tab-btn active"
+            data-role="student"
+            id="tab-student"
+            aria-controls="panel-student"
+            aria-selected="true"
+          >
+            <span class="tab-radio" aria-hidden="true"></span>
+            Student
+          </button>
+          <button
+            type="button"
+            class="tab-btn"
+            data-role="educator"
+            id="tab-educator"
+            aria-controls="panel-educator"
+            aria-selected="false"
+          >
+            <span class="tab-icon-screen" aria-hidden="true"></span>
+            Educator
+          </button>
+        </div>
+
+        <input type="hidden" id="accountRole" name="accountRole" value="student" />
+
+        <form id="registerForm" novalidate>
+          <div class="field">
+            <label for="fullName">Full Name</label>
+            <div class="input-wrap">
+              <input
+                id="fullName"
+                name="fullName"
+                type="text"
+                placeholder="Full Name"
+                autocomplete="name"
+                required
+              />
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="regEmail">Email Address</label>
+            <div class="input-wrap input-wrap--has-trail">
+              <input
+                id="regEmail"
+                name="email"
+                type="email"
+                placeholder="Email Address"
+                autocomplete="email"
+                required
+              />
+              <span class="input-trail" aria-hidden="true" title="Edit">✎</span>
+            </div>
+            <p class="email-helper" data-role="student">
+              Use your official school email (e.g. <code>@moe-dl.edu.my</code> or
+              your school domain).
+            </p>
+            <p class="email-helper" data-role="educator">
+              School or personal email is fine. We may ask for proof of teaching
+              during verification.
+            </p>
+          </div>
+
+          <div class="field">
+            <label for="regPassword">Password</label>
+            <div class="input-wrap input-wrap--has-trail">
+              <input
+                id="regPassword"
+                name="password"
+                type="password"
+                placeholder="Password"
+                autocomplete="new-password"
+                minlength="8"
+                required
+              />
+              <button
+                type="button"
+                class="input-trail input-trail-btn"
+                id="togglePassword"
+                aria-label="Show password"
+              >
+                👁
+              </button>
+            </div>
+            <div class="password-meter" aria-hidden="true">
+              <div class="password-meter-bar" id="passwordMeterBar"></div>
+            </div>
+            <p class="field-hint" id="passwordHint">
+              At least 8 characters. Mix letters and numbers for a stronger
+              password.
+            </p>
+          </div>
+
+          <div class="field">
+            <label for="regConfirmPassword">Confirm Password</label>
+            <div class="input-wrap input-wrap--has-trail">
+              <input
+                id="regConfirmPassword"
+                name="confirmPassword"
+                type="password"
+                placeholder="Confirm Password"
+                autocomplete="new-password"
+                minlength="8"
+                required
+              />
+              <button
+                type="button"
+                class="input-trail input-trail-btn"
+                id="toggleConfirmPassword"
+                aria-label="Show confirm password"
+              >
+                👁
+              </button>
+            </div>
+          </div>
+
+          <div
+            class="tab-panel active"
+            id="panel-student"
+            data-role="student"
+            role="tabpanel"
+            aria-labelledby="tab-student"
+          >
+            <div class="field">
+              <label for="schoolName">School Name</label>
+              <div class="input-wrap">
+                <input
+                  id="schoolName"
+                  name="schoolName"
+                  type="text"
+                  placeholder="Your school name"
+                  autocomplete="organization"
+                />
+              </div>
+            </div>
+            <div class="field">
+              <label for="studentForm">Form / Level</label>
+              <select id="studentForm" name="studentForm">
+                <option value="">Select (optional)</option>
+                <option value="Form 4">Form 4</option>
+                <option value="Form 5">Form 5</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="studentSubject">Main Subject Focus</label>
+              <select id="studentSubject" name="studentSubject" required>
+                <option value="">Choose one subject</option>
+                <option value="Bahasa Melayu">Bahasa Melayu</option>
+                <option value="English">English</option>
+                <option value="Mathematics">Mathematics</option>
+                <option value="Science">Science</option>
+                <option value="Sejarah">Sejarah</option>
+                <option value="Physics">Physics</option>
+                <option value="Chemistry">Chemistry</option>
+                <option value="Biology">Biology</option>
+              </select>
+            </div>
+          </div>
+
+          <div
+            class="tab-panel"
+            id="panel-educator"
+            data-role="educator"
+            role="tabpanel"
+            aria-labelledby="tab-educator"
+          >
+            <div class="field">
+              <label for="educatorInstitution">School / Institution</label>
+              <div class="input-wrap">
+                <input
+                  id="educatorInstitution"
+                  name="educatorInstitution"
+                  type="text"
+                  placeholder="Where you teach"
+                  autocomplete="organization"
+                />
+              </div>
+            </div>
+            <div class="field">
+              <label for="educatorSubject">Primary subject you teach</label>
+              <select id="educatorSubject" name="educatorSubject" required>
+                <option value="">Choose one subject</option>
+                <option value="Bahasa Melayu">Bahasa Melayu</option>
+                <option value="English">English</option>
+                <option value="Mathematics">Mathematics</option>
+                <option value="Science">Science</option>
+                <option value="Sejarah">Sejarah</option>
+                <option value="Physics">Physics</option>
+                <option value="Chemistry">Chemistry</option>
+                <option value="Biology">Biology</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="educatorBio">Short bio (optional)</label>
+              <textarea
+                id="educatorBio"
+                name="educatorBio"
+                rows="3"
+                placeholder="Years of experience, qualifications, or subjects you specialise in"
+              ></textarea>
+            </div>
+            <div class="pending-note">
+              <strong>Until you are verified</strong>, you can browse the site but
+              cannot: add courses, publish paid content, or access the full
+              educator dashboard. We will email you when verification is complete.
+            </div>
+          </div>
+
+          <div class="field field--checkbox">
+            <label class="checkbox-label">
+              <input type="checkbox" id="termsAccept" name="termsAccept" required />
+              <span
+                >I agree to the <a href="#">Terms</a> and
+                <a href="#">Privacy Policy</a>.</span
+              >
+            </label>
+          </div>
+
+          <button class="btn btn-signup" type="submit">Sign Up</button>
+          <p id="statusMessage" class="status" role="status"></p>
+        </form>
+
+        <p class="helper helper--center">
+          Already have an account?
+          <a href="./login.html">Log In</a>
+          <span class="helper-chevron" aria-hidden="true">›</span>
+        </p>
+      </section>
+    </main>
+
+    <script src="./auth.js"></script>
+  </body>
+</html>

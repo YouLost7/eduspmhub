@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>EduSPM Hub | Student Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./dashboard.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="container nav">
+        <div class="brand-wrap">
+          <span class="brand-icon">▶</span>
+          <a href="./index.html" class="brand-name">EduSPM<span>Hub</span></a>
+        </div>
+        <nav>
+          <ul class="menu">
+            <li><a href="#">Home</a></li>
+            <li><a href="#">Browse</a></li>
+            <li><a href="#">About</a></li>
+            <li><a href="#">Contact</a></li>
+          </ul>
+        </nav>
+        <div class="top-actions">
+          <span class="search">⌕</span>
+          <a class="link-btn" href="./login.html">Log In</a>
+          <a class="solid-btn" href="./register.html">Sign Up</a>
+          <a class="solid-btn" href="./platform.html">Go Platform</a>
+        </div>
+      </div>
+    </header>
+
+    <main class="container app-layout">
+      <aside class="sidebar">
+        <a class="side-item active" href="#">Home</a>
+        <a class="side-item" href="#">Browse</a>
+        <a class="side-item" href="#">My Courses</a>
+        <a class="side-item" href="#">Profile</a>
+      </aside>
+
+      <section class="content">
+        <div class="hero-panel">
+          <div class="hero-copy">
+            <h1>Welcome to <span>EduSPM Hub!</span></h1>
+            <p>
+              Explore verified educational videos and resources to ace your SPM
+              exams.
+            </p>
+            <a class="solid-btn large" href="./platform.html">Browse Courses</a>
+          </div>
+          <div class="hero-illustration" aria-hidden="true">
+            <div class="screen">
+              <div class="screen-top"></div>
+              <div class="video"></div>
+              <div class="bar"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="main-grid">
+          <div class="left-content">
+            <section class="section-block">
+              <div class="section-head">
+                <h2>Recommended for You</h2>
+              </div>
+              <p style="color: #64748b; font-size: 0.95rem; margin: 0">
+                This static mock is cleared. Use the React app: courses appear in Browse after
+                verified educators publish from My teaching.
+              </p>
+            </section>
+
+            <section class="section-block">
+              <div class="section-head">
+                <h2>Top Rated Educators</h2>
+              </div>
+              <p style="color: #64748b; font-size: 0.95rem; margin: 0">
+                No placeholder tutors here — registered educators show on the live dashboard.
+              </p>
+            </section>
+          </div>
+
+          <aside class="popular">
+            <div class="section-head">
+              <h2>Popular Courses</h2>
+              <a href="./platform.html">View All</a>
+            </div>
+            <p style="color: #64748b; font-size: 0.9rem; margin: 0">
+              Popular courses will list once students enrol in real catalogue items.
+            </p>
+          </aside>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <p>&copy; 2026 EduSPM Hub. Contact: support@eduspmhub.my</p>
+    </footer>
+  </body>
+</html>

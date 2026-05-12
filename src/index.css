@@ -1,0 +1,188 @@
+/* Global polish — SPM-focused, calm motion */
+:root {
+  --motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: rgba(37, 99, 235, 0.18);
+  color: #0f172a;
+}
+
+/* Thin Jalur Gemilang–inspired accent (professional, not loud) */
+.malaysia-strip {
+  height: 3px;
+  background: linear-gradient(
+    90deg,
+    #01257f 0%,
+    #01257f 33%,
+    #ffffff 33%,
+    #ffffff 66%,
+    #e4002b 66%,
+    #e4002b 100%
+  );
+  opacity: 0.85;
+}
+
+.study-tip-banner {
+  max-width: min(1180px, 94%);
+  margin: 0 auto;
+  padding: 0.45rem 1rem;
+  background: linear-gradient(90deg, #f0f6ff, #fff9f0);
+  border: 1px solid #e4eaf4;
+  border-radius: 10px;
+  font-size: 0.86rem;
+  color: #3d5266;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  overflow: hidden;
+}
+
+.study-tip-banner .tip-label {
+  font-weight: 700;
+  color: #1e3a5f;
+  white-space: nowrap;
+}
+
+.study-tip-banner .tip-text {
+  flex: 1;
+  min-width: 0;
+}
+
+@keyframes gentle-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+.hero-float {
+  animation: gentle-float 5.5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .hero-float {
+    animation: none;
+  }
+}
+
+/* Staff verification console (/staff) — internal, separate from learner UI */
+.staff-page {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 3rem;
+  color: #0b1220;
+}
+
+.staff-page__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.staff-page__eyebrow {
+  margin: 0 0 0.35rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.staff-page h1 {
+  margin: 0 0 0.5rem;
+  font-size: 1.65rem;
+}
+
+.staff-page__lede {
+  margin: 0;
+  max-width: 36rem;
+  color: #475569;
+  line-height: 1.55;
+}
+
+.staff-card {
+  margin-bottom: 1rem;
+}
+
+.staff-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.staff-table-wrap {
+  overflow-x: auto;
+  margin-top: 0.75rem;
+}
+
+.staff-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.staff-table th,
+.staff-table td {
+  border: 1px solid #e2e8f0;
+  padding: 0.55rem 0.65rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.staff-table th {
+  background: #f8fafc;
+  font-weight: 600;
+}
+
+.staff-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.staff-mono {
+  font-size: 0.82rem;
+  word-break: break-all;
+}
+
+.staff-page .outline-btn {
+  display: inline-block;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #1e293b;
+  border-radius: 8px;
+  padding: 0.5rem 0.85rem;
+  font-weight: 600;
+  font-size: 0.88rem;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.staff-page .outline-btn:hover:not(:disabled) {
+  background: #f1f5f9;
+}
+
+.staff-page .outline-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
