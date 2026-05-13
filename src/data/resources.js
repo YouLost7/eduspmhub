@@ -18,4 +18,16 @@ export const STUDY_TIPS = [
     id: 4,
     text: "English: Plan your essay in 5 minutes — structure first, then elaborate.",
   },
+  {
+    id: 5,
+    text: "Learn From Failure",
+  },
+  {
+    id: 6,
+    text: "Don't Play Games, Play Real Games",
+  },
+  {
+    id: 7,
+    text: "Think Positively",
+  },
 ];

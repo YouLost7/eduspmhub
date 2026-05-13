@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
 import { apiJson, messageForFailedApiResponse } from "../api.js";
+import { AppToast } from "./AppToast.jsx";
 import { parseExternalVideoUrl } from "../lib/lessonEmbed.js";
 
 const SUBJECTS = [
@@ -114,9 +115,10 @@ export default function EducatorMyTeaching() {
   const load = useCallback(async () => {
     setLoadErr("");
     try {
-      const data = await apiJson("/api/my-courses");
-      setCourses(data.courses || []);
+      const courseData = await apiJson("/api/my-courses");
+      setCourses(courseData.courses || []);
     } catch (e) {
+      setCourses([]);
       setLoadErr(e.message || "Could not load your courses.");
     }
   }, []);
@@ -478,7 +480,8 @@ export default function EducatorMyTeaching() {
           <strong>Content</strong>. Each lesson may include <strong>either</strong> a PDF handout{" "}
           <strong>or</strong> an embedded video (MP4/WebM) — not both. Media plays inside the lesson
           page for signed-in learners. Press <strong>Save changes</strong> for text; files save on
-          upload. Use <strong>Preview lessons</strong> to review.
+          upload. Use <strong>Preview lessons</strong> to review. Open <strong>Who enrolled</strong> on each
+          course to see how many students joined and their account details.
         </p>
         <Link className="outline-btn" to="/browse">
           View public catalogue
@@ -488,11 +491,6 @@ export default function EducatorMyTeaching() {
       {loadErr && (
         <p className="form-error" role="alert">
           {loadErr}
-        </p>
-      )}
-      {msg && (
-        <p className="form-success" role="status">
-          {msg}
         </p>
       )}
       {err && (
@@ -593,7 +591,10 @@ export default function EducatorMyTeaching() {
           <p className="empty-list">No courses yet — add one above.</p>
         ) : (
           <ul className="enrol-list educator-course-list">
-            {courses.map((c) => (
+            {courses.map((c) => {
+              const n = c.enrollmentStudentCount ?? 0;
+              const students = c.enrollmentStudents ?? [];
+              return (
               <motion.li
                 key={c.id}
                 className="educator-course-item"
@@ -663,6 +664,49 @@ export default function EducatorMyTeaching() {
                     {c.description.length > 220 ? "…" : ""}
                   </p>
                 ) : null}
+
+                <div className="educator-enroll-block">
+                  <p className="educator-enroll-count">
+                    {n === 0
+                      ? "No students enrolled yet."
+                      : n === 1
+                        ? "1 student enrolled."
+                        : `${n} students enrolled.`}
+                  </p>
+                  <details className="educator-enroll-details">
+                    <summary>
+                      {n === 0 ? "Enrolment list" : `Who enrolled (${n})`}
+                    </summary>
+                    {n === 0 ? (
+                      <p className="field-hint" style={{ margin: "0.35rem 0 0" }}>
+                        When students add this course from Browse, they appear here with the name
+                        and email on their account.
+                      </p>
+                    ) : (
+                      <ul className="educator-enroll-list">
+                        {students.map((s) => (
+                          <li key={s.id}>
+                            <strong>{s.fullName || "Student"}</strong>
+                            <div className="educator-enroll-meta">
+                              <span>{s.email}</span>
+                              {(s.schoolName || s.studentForm || s.studentSubject) && (
+                                <span>
+                                  {[
+                                    s.schoolName,
+                                    s.studentForm,
+                                    s.studentSubject,
+                                  ]
+                                    .filter(Boolean)
+                                    .join(" · ")}
+                                </span>
+                              )}
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </details>
+                </div>
 
                 {editId === c.id ? (
                   <div className="educator-edit-panel educator-edit-panel--wide profile-form">
@@ -937,10 +981,17 @@ export default function EducatorMyTeaching() {
                   </div>
                 ) : null}
               </motion.li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </section>
+      <AppToast
+        message={msg}
+        variant="success"
+        durationMs={7800}
+        onDismiss={() => setMsg("")}
+      />
     </div>
   );
 }

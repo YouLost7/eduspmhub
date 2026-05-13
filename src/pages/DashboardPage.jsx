@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { StudyTipBanner } from "../components/StudyTipBanner.jsx";
+import { AppToast } from "../components/AppToast.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { apiJson } from "../api.js";
 import { profilePhotoSrc } from "../lib/profilePhoto.js";
@@ -32,7 +33,7 @@ export default function DashboardPage() {
     topEducators: [],
   });
   const [loadErr, setLoadErr] = useState("");
-  const [toast, setToast] = useState("");
+  const [toast, setToast] = useState(null);
 
   const loadFeatured = useCallback(async () => {
     try {
@@ -53,19 +54,19 @@ export default function DashboardPage() {
   }, [loadFeatured, user?.id, user?.studentSubject]);
 
   async function enrolFromDashboard(courseId) {
-    setToast("");
+    setToast(null);
     try {
       await apiJson("/api/my-courses/enroll", {
         method: "POST",
         body: { courseId },
       });
-      setToast("Added to My courses.");
+      setToast({ text: "Added to My courses.", kind: "success" });
       loadFeatured();
     } catch (e) {
       if (e.status === 401) {
         navigate(`/login?next=${encodeURIComponent("/browse")}&enroll=${encodeURIComponent(courseId)}`);
       } else {
-        setToast(e.message || "Could not enrol.");
+        setToast({ text: e.message || "Could not enrol.", kind: "error" });
       }
     }
   }
@@ -242,11 +243,11 @@ export default function DashboardPage() {
               {loadErr} Start the API with <code>npm run dev:all</code>.
             </p>
           )}
-          {toast && (
-            <p className="form-success" style={{ margin: "0 0 0.5rem" }}>
-              {toast}
-            </p>
-          )}
+          <AppToast
+            message={toast?.text || ""}
+            variant={toast?.kind === "error" ? "error" : "success"}
+            onDismiss={() => setToast(null)}
+          />
 
           <div className="main-grid">
             <div className="left-content">

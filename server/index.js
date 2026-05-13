@@ -35,6 +35,7 @@ import {
   isSafeLessonVideoKey,
   isValidEmbedObject,
 } from "./educatorCourses.js";
+import { getEducatorCourseEnrollmentsSummary } from "./enrollmentSummary.js";
 
 const PREFERRED_PORT = Number(process.env.PORT) || 3001;
 const SERVER_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -825,10 +826,21 @@ app.get("/api/my-courses", requireAuth, async (req, res) => {
     const users = await loadUsers();
     const u = findUserById(users, req.session.userId);
     if (u?.role === "educator") {
-      const list = (await loadEducatorCourses()).filter((c) => c.educatorId === u.id);
+      const ecList = await loadEducatorCourses();
+      const list = ecList.filter((c) => c.educatorId === u.id);
       list.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
+      const enroll = await loadEnrollments();
+      const summary = getEducatorCourseEnrollmentsSummary(u.id, ecList, enroll, users);
+      const byCourseId = new Map(summary.map((row) => [row.courseId, row]));
       return res.json({
-        courses: list.map((c) => mapToManagedRow(c, u.fullName)),
+        courses: list.map((c) => {
+          const row = byCourseId.get(c.id);
+          return {
+            ...mapToManagedRow(c, u.fullName),
+            enrollmentStudentCount: row?.studentCount ?? 0,
+            enrollmentStudents: row?.students ?? [],
+          };
+        }),
       });
     }
     const enroll = await loadEnrollments();
@@ -1063,6 +1075,23 @@ app.post("/api/my-courses/enroll", requireAuth, async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Enrol failed" });
+  }
+});
+
+app.get("/api/educator/course-enrollments", requireAuth, async (req, res) => {
+  try {
+    const users = await loadUsers();
+    const u = findUserById(users, req.session.userId);
+    if (!u || u.role !== "educator") {
+      return res.status(403).json({ error: "Educator access only" });
+    }
+    const ecList = await loadEducatorCourses();
+    const enroll = await loadEnrollments();
+    const courses = getEducatorCourseEnrollmentsSummary(u.id, ecList, enroll, users);
+    res.json({ courses });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Could not load enrolments" });
   }
 });
 

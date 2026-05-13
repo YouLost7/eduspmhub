@@ -213,6 +213,101 @@
   font-size: 0.9rem;
 }
 
+/* Fixed notifications (enrol, educator saves, etc.) */
+.app-toast-host {
+  position: fixed;
+  top: max(0.85rem, env(safe-area-inset-top, 0px));
+  right: max(0.85rem, env(safe-area-inset-right, 0px));
+  left: auto;
+  z-index: 10050;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+  pointer-events: none;
+}
+
+.app-toast-host .app-toast {
+  pointer-events: auto;
+}
+
+.app-toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  max-width: min(400px, calc(100vw - 1.75rem));
+  padding: 0.88rem 1rem;
+  border-radius: 14px;
+  box-shadow:
+    0 14px 44px rgba(15, 23, 42, 0.2),
+    0 0 0 1px rgba(15, 23, 42, 0.06);
+  font-size: 0.92rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.app-toast--success {
+  background: linear-gradient(155deg, #ecfdf5 0%, #d1fae5 55%, #a7f3d0 100%);
+  color: #065f46;
+}
+
+.app-toast--error {
+  background: linear-gradient(155deg, #fef2f2 0%, #fee2e2 55%, #fecaca 100%);
+  color: #991b1b;
+}
+
+.app-toast-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  margin-top: 0.06rem;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.app-toast--success .app-toast-icon {
+  background: rgba(5, 150, 105, 0.2);
+  color: #047857;
+}
+
+.app-toast--error .app-toast-icon {
+  background: rgba(185, 28, 28, 0.18);
+  color: #b91c1c;
+}
+
+.app-toast-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.app-toast-dismiss {
+  flex-shrink: 0;
+  margin: -0.2rem -0.15rem 0 0;
+  padding: 0.15rem 0.35rem;
+  border: none;
+  background: transparent;
+  color: inherit;
+  opacity: 0.55;
+  font-size: 1.35rem;
+  font-weight: 300;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.app-toast-dismiss:hover {
+  opacity: 0.95;
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.app-toast--error .app-toast-dismiss:hover {
+  background: rgba(0, 0, 0, 0.08);
+}
+
 .my-list h2 {
   margin: 0 0 0.5rem;
   font-size: 1.1rem;
@@ -854,3 +949,55 @@
 .educator-link .educator-photo-thumb {
   margin-bottom: 0.45rem;
 }
+
+.educator-enroll-block {
+  margin-top: 0.65rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid #e8eef6;
+}
+
+.educator-enroll-count {
+  margin: 0 0 0.35rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #1e3a5f;
+}
+
+.educator-enroll-details {
+  font-size: 0.86rem;
+}
+
+.educator-enroll-details summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #1d4ed8;
+}
+
+.educator-enroll-details summary:hover {
+  text-decoration: underline;
+}
+
+.educator-enroll-list {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+}
+
+.educator-enroll-list li {
+  padding: 0.45rem 0.5rem;
+  margin-bottom: 0.35rem;
+  background: #f8fafc;
+  border: 1px solid #e4eaf4;
+  border-radius: 8px;
+}
+
+.educator-enroll-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin-top: 0.2rem;
+  font-size: 0.8rem;
+  color: #475569;
+  word-break: break-word;
+}
+

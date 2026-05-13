@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import { Link, useSearchParams } from "react-router-dom";
 import { apiJson } from "../api.js";
+import { AppToast } from "../components/AppToast.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 
 export default function BrowsePage() {
@@ -200,11 +201,6 @@ export default function BrowsePage() {
         </p>
       )}
 
-      {okMsg && (
-        <p className="form-success" role="status">
-          {okMsg}
-        </p>
-      )}
       {staleApiHint && (
         <p className="verify-banner" role="status">
           {staleApiHint}
@@ -401,6 +397,7 @@ export default function BrowsePage() {
           </div>
         </div>
       ) : null}
+      <AppToast message={okMsg} variant="success" onDismiss={() => setOkMsg("")} />
     </div>
   );
 }
