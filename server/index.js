@@ -38,10 +38,12 @@ import {
 } from "./educatorCourses.js";
 import { getEducatorCourseEnrollmentsSummary } from "./enrollmentSummary.js";
 import { SqliteSessionStore } from "./sessionStore.js";
+import { hasPurchaseEntitlement } from "./payments/store.js";
 import { registerAuthAdminRoutes } from "./routes/authAdminRoutes.js";
 import { registerProfileRoutes } from "./routes/profileRoutes.js";
 import { registerEducatorRoutes } from "./routes/educatorRoutes.js";
 import { registerCourseRoutes } from "./routes/courseRoutes.js";
+import { registerPaymentRoutes } from "./routes/paymentRoutes.js";
 
 const PREFERRED_PORT = Number(process.env.PORT) || 3001;
 const SERVER_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -304,6 +306,17 @@ const ADMIN_KEY = IS_PROD
   ? requiredEnv("ADMIN_KEY")
   : process.env.ADMIN_KEY || "dev-admin-change-me";
 const SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+const APP_BASE_URL = String(process.env.APP_BASE_URL || "http://localhost:5173").replace(
+  /\/$/,
+  ""
+);
+const STRIPE_SECRET_KEY = String(process.env.STRIPE_SECRET_KEY || "").trim();
+const STRIPE_WEBHOOK_SECRET = String(process.env.STRIPE_WEBHOOK_SECRET || "").trim();
+if (IS_PROD) {
+  requiredEnv("APP_BASE_URL");
+  requiredEnv("STRIPE_SECRET_KEY");
+  requiredEnv("STRIPE_WEBHOOK_SECRET");
+}
 
 /** HMAC secret for short-lived lesson PDF/video URLs (defaults to session secret). */
 const LESSON_MEDIA_TOKEN_SECRET =
@@ -431,10 +444,19 @@ app.use(
   cors({
     origin: corsOrigin,
     credentials: true,
-    allowedHeaders: ["Content-Type", "X-Admin-Key"],
+    allowedHeaders: ["Content-Type", "X-Admin-Key", "Stripe-Signature"],
   })
 );
-app.use(express.json({ limit: "8mb" }));
+app.use(
+  express.json({
+    limit: "8mb",
+    verify: (req, _res, buf) => {
+      if (req.originalUrl === "/api/payments/webhook") {
+        req.rawBody = Buffer.from(buf);
+      }
+    },
+  })
+);
 
 app.use(
   session({
@@ -612,6 +634,7 @@ async function courseAccessContext(userId, courseId) {
     const enroll = await loadEnrollments();
     const ids = enroll[u.id] || [];
     if (ids.includes(id) && c.status === "published") ok = true;
+    else if (c.status === "published" && (await hasPurchaseEntitlement(u.id, id))) ok = true;
   }
   if (!ok) {
     return {
@@ -761,6 +784,19 @@ registerAuthAdminRoutes(app, authAdminDeps);
 registerProfileRoutes(app, profileDeps);
 registerEducatorRoutes(app, educatorDeps);
 registerCourseRoutes(app, courseDeps);
+registerPaymentRoutes(app, {
+  requireAuth,
+  loadUsers,
+  findUserById,
+  loadEnrollments,
+  saveEnrollments,
+  loadEducatorCourses,
+  CATALOG,
+  APP_BASE_URL,
+  STRIPE_SECRET_KEY,
+  STRIPE_WEBHOOK_SECRET,
+  isProd: IS_PROD,
+});
 
 function runLicenseUpload(req, res, next) {
   licenseUpload.single("license")(req, res, (err) => {

@@ -82,6 +82,16 @@ export default function UserAppShell() {
           >
             {isEducator ? "My teaching" : "My courses"}
           </NavLink>
+          {!isEducator && (
+            <NavLink
+              to="/transactions"
+              className={({ isActive }) =>
+                isActive ? "side-item active" : "side-item"
+              }
+            >
+              Transactions
+            </NavLink>
+          )}
           <NavLink
             to="/profile"
             className={({ isActive }) =>

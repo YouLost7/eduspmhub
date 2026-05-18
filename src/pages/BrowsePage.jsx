@@ -5,6 +5,15 @@ import { apiJson } from "../api.js";
 import { AppToast } from "../components/AppToast.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 
+function priceToCents(priceLike) {
+  const raw = String(priceLike ?? "").trim();
+  if (!raw) return 0;
+  const cleaned = raw.replace(/^RM\s*/i, "").replace(/,/g, "");
+  const num = Number.parseFloat(cleaned.replace(/[^\d.]/g, ""));
+  if (!Number.isFinite(num) || num <= 0) return 0;
+  return Math.round(num * 100);
+}
+
 export default function BrowsePage() {
   const { user } = useAuth();
   const [courses, setCourses] = useState([]);
@@ -120,6 +129,22 @@ export default function BrowsePage() {
     }
   }
 
+  async function checkout(courseId) {
+    try {
+      const data = await apiJson("/api/payments/checkout", {
+        method: "POST",
+        body: { courseId },
+      });
+      const url = String(data.checkoutUrl || "").trim();
+      if (!url) throw new Error("Payment checkout URL was not returned");
+      window.location.assign(url);
+      return true;
+    } catch (e) {
+      setErr(e.message || "Could not start payment");
+      return false;
+    }
+  }
+
   useEffect(() => {
     const en = searchParams.get("enroll");
     if (!en) return;
@@ -143,6 +168,13 @@ export default function BrowsePage() {
   }, [user, searchParams, setSearchParams]);
 
   const isEducator = user?.role === "educator";
+  const loginLinkForCourse = useCallback((course) => {
+    const isPaid = priceToCents(course?.price) > 0;
+    if (isPaid) {
+      return `/login?next=${encodeURIComponent("/browse")}`;
+    }
+    return `/login?next=${encodeURIComponent("/browse")}&enroll=${encodeURIComponent(course?.id || "")}`;
+  }, []);
 
   return (
     <div>
@@ -269,19 +301,29 @@ export default function BrowsePage() {
               {!user && (
                 <Link
                   className="solid-btn"
-                  to={`/login?next=${encodeURIComponent("/browse")}&enroll=${encodeURIComponent(c.id)}`}
+                  to={loginLinkForCourse(c)}
                 >
-                  Sign in to enrol
+                  {priceToCents(c.price) > 0 ? "Sign in to buy" : "Sign in to enrol"}
                 </Link>
               )}
               {user?.role === "student" && (
-                <button
-                  type="button"
-                  className="solid-btn browse-enrol"
-                  onClick={() => enroll(c.id)}
-                >
-                  Enrol
-                </button>
+                priceToCents(c.price) > 0 ? (
+                  <button
+                    type="button"
+                    className="solid-btn browse-enrol"
+                    onClick={() => checkout(c.id)}
+                  >
+                    Buy now
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="solid-btn browse-enrol"
+                    onClick={() => enroll(c.id)}
+                  >
+                    Enrol
+                  </button>
+                )
               )}
             </div>
             {isEducator && (
@@ -372,21 +414,33 @@ export default function BrowsePage() {
                   {!user && (
                     <Link
                       className="solid-btn"
-                      to={`/login?next=${encodeURIComponent("/browse")}&enroll=${encodeURIComponent(detail.id)}`}
+                      to={loginLinkForCourse(detail)}
                     >
-                      Sign in to enrol
+                      {priceToCents(detail.price) > 0 ? "Sign in to buy" : "Sign in to enrol"}
                     </Link>
                   )}
                   {user?.role === "student" && (
-                    <button
-                      type="button"
-                      className="solid-btn"
-                      onClick={async () => {
-                        if (await enroll(detail.id)) closeDetail();
-                      }}
-                    >
-                      Enrol in this course
-                    </button>
+                    priceToCents(detail.price) > 0 ? (
+                      <button
+                        type="button"
+                        className="solid-btn"
+                        onClick={async () => {
+                          await checkout(detail.id);
+                        }}
+                      >
+                        Buy this course
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="solid-btn"
+                        onClick={async () => {
+                          if (await enroll(detail.id)) closeDetail();
+                        }}
+                      >
+                        Enrol in this course
+                      </button>
+                    )
                   )}
                   <button type="button" className="outline-btn" onClick={closeDetail}>
                     Close

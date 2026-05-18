@@ -5,6 +5,15 @@ import { apiJson } from "../api.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import EducatorMyTeaching from "../components/EducatorMyTeaching.jsx";
 
+function priceToCents(priceLike) {
+  const raw = String(priceLike ?? "").trim();
+  if (!raw) return 0;
+  const cleaned = raw.replace(/^RM\s*/i, "").replace(/,/g, "");
+  const num = Number.parseFloat(cleaned.replace(/[^\d.]/g, ""));
+  if (!Number.isFinite(num) || num <= 0) return 0;
+  return Math.round(num * 100);
+}
+
 export default function MyCoursesPage() {
   const { user } = useAuth();
   const [courses, setCourses] = useState([]);
@@ -94,6 +103,8 @@ export default function MyCoursesPage() {
                     <>Tutor: {c.educator}</>
                   )}{" "}
                   · {c.price}
+                  {" · "}
+                  <strong>{priceToCents(c.price) > 0 ? "Paid" : "Free"}</strong>
                 </span>
                 </span>
                 <Link className="solid-btn" style={{ fontSize: "0.86rem" }} to={`/learn/${encodeURIComponent(c.id)}`}>

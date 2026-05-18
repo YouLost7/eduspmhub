@@ -20,6 +20,7 @@ Then register and use **Browse**, **My courses**, and **Profile** (requires sign
 
 - `GET /api/dashboard/featured` — recommendations (boosts your subject if you are a logged-in student), popular courses sorted by enrolment count, educator strip mixing **verified** registered educators, curated house tutors, and up to two **pending** profiles.
 - Auth and admin endpoints have basic IP rate limits (`/api/auth/register`, `/api/auth/login`, `/api/admin/*`) to reduce brute-force and abuse.
+- Paid course checkout uses Stripe (`/api/payments/checkout`) while free courses keep instant enrolment.
 
 ### Scripts
 
@@ -59,11 +60,32 @@ Other env vars:
 - `ADMIN_KEY` — required header for verify endpoint
 - `CORS_ORIGINS` — **production-only** comma-separated allowlist (for example `https://app.example.com,https://admin.example.com`)
 - `DB_PATH` — optional SQLite path (default `server/data/eduspmhub.sqlite`)
+- `APP_BASE_URL` — frontend base URL for Stripe success/cancel redirects (for example `http://localhost:5173`)
+- `STRIPE_SECRET_KEY` — Stripe API secret key
+- `STRIPE_WEBHOOK_SECRET` — Stripe webhook endpoint signing secret
+
+## Payments (Stripe)
+
+- Free courses (`RM0.00`) stay on direct enrolment and do not open checkout.
+- Paid courses require successful Stripe payment before access is granted.
+- Webhooks record payment state and grant course entitlement idempotently.
+- Student transaction endpoints:
+  - `GET /api/payments/transactions`
+  - `GET /api/payments/receipt/:id`
+
+Local webhook forwarding example:
+
+```bash
+stripe listen --forward-to http://localhost:3001/api/payments/webhook
+```
+
+Use Stripe test cards in development (for example `4242 4242 4242 4242`).
 
 ## Data files (gitignored)
 
 - `server/data/eduspmhub.sqlite` — main app database (users, enrolments, educator courses)
 - `sessions` are also stored in SQLite, so login sessions survive API restarts (until cookie expiry).
+- Payment rows (`payments`, `purchase_items`, `payment_events`) are stored in the same SQLite database.
 - Legacy JSON files (`users.json`, `enrollments.json`, `educator-courses.json`) are imported automatically on first SQLite boot when tables are empty.
 
 ## Backend architecture
@@ -74,6 +96,7 @@ Other env vars:
   - `server/routes/profileRoutes.js`
   - `server/routes/educatorRoutes.js`
   - `server/routes/courseRoutes.js`
+- `server/routes/paymentRoutes.js`
 - Persistence is SQLite-backed via `server/sqlite.js` and data adapters in `server/db.js` and `server/educatorCourses.js`.
 - Session persistence uses `server/sessionStore.js` (SQLite), replacing in-memory session storage.
 

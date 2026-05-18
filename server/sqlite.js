@@ -146,10 +146,75 @@ async function ensureDb() {
       data TEXT NOT NULL
     )`
   );
+  await run(
+    db,
+    `CREATE TABLE IF NOT EXISTS payments (
+      id TEXT PRIMARY KEY,
+      provider TEXT NOT NULL,
+      provider_session_id TEXT,
+      provider_payment_intent_id TEXT,
+      provider_event_id TEXT,
+      user_id TEXT NOT NULL,
+      course_id TEXT NOT NULL,
+      course_title TEXT NOT NULL,
+      amount_cents INTEGER NOT NULL,
+      currency TEXT NOT NULL,
+      status TEXT NOT NULL,
+      receipt_url TEXT,
+      payment_method_type TEXT,
+      raw_payload TEXT,
+      paid_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`
+  );
+  await run(
+    db,
+    `CREATE TABLE IF NOT EXISTS purchase_items (
+      id TEXT PRIMARY KEY,
+      payment_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      course_id TEXT NOT NULL,
+      course_title TEXT NOT NULL,
+      amount_cents INTEGER NOT NULL,
+      currency TEXT NOT NULL,
+      paid_at TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )`
+  );
+  await run(
+    db,
+    `CREATE TABLE IF NOT EXISTS payment_events (
+      provider TEXT NOT NULL,
+      event_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (provider, event_id)
+    )`
+  );
   await run(db, "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)");
   await run(
     db,
     "CREATE INDEX IF NOT EXISTS idx_educator_courses_owner ON educator_courses(educator_id)"
+  );
+  await run(
+    db,
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_purchase_unique_user_course ON purchase_items(user_id, course_id)"
+  );
+  await run(
+    db,
+    "CREATE INDEX IF NOT EXISTS idx_purchase_items_user ON purchase_items(user_id)"
+  );
+  await run(
+    db,
+    "CREATE INDEX IF NOT EXISTS idx_payments_user ON payments(user_id)"
+  );
+  await run(
+    db,
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_payments_provider_session ON payments(provider, provider_session_id)"
+  );
+  await run(
+    db,
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_payments_provider_intent ON payments(provider, provider_payment_intent_id)"
   );
   await migrateLegacyJsonIfNeeded(db);
   return db;

@@ -1,3 +1,9 @@
+import {
+  hasPurchaseEntitlement,
+  listPurchasedCourseIds,
+  priceToCents,
+} from "../payments/store.js";
+
 export function registerCourseRoutes(app, deps) {
   const {
     requireAuth,
@@ -132,9 +138,11 @@ export function registerCourseRoutes(app, deps) {
       }
       const enroll = await loadEnrollments();
       const ids = enroll[req.session.userId] || [];
+      const purchasedIds = await listPurchasedCourseIds(req.session.userId);
+      const mergedIds = [...new Set([...ids, ...purchasedIds])];
       const ecList = await loadEducatorCourses();
       const courses = [];
-      for (const id of ids) {
+      for (const id of mergedIds) {
         const row = await resolveStudentEnrolledCourseRow(id, users, ecList);
         if (row) courses.push(row);
       }
@@ -349,6 +357,14 @@ export function registerCourseRoutes(app, deps) {
       const row = await resolveStudentEnrolledCourseRow(courseId, users, ecList);
       if (!row) {
         return res.status(400).json({ error: "Invalid or unpublished course" });
+      }
+      const isPaidCourse = priceToCents(row.price) > 0;
+      if (isPaidCourse && !(await hasPurchaseEntitlement(req.session.userId, courseId))) {
+        return res.status(402).json({
+          error:
+            "This course requires payment before enrolment. Use the Buy now flow to complete checkout.",
+          code: "PAYMENT_REQUIRED",
+        });
       }
       const enroll = await loadEnrollments();
       const list = enroll[req.session.userId] || [];
