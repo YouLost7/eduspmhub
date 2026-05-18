@@ -1,6 +1,7 @@
 import express from "express";
 import session from "express-session";
 import cors from "cors";
+import rateLimit from "express-rate-limit";
 import bcrypt from "bcryptjs";
 import multer from "multer";
 import http from "node:http";
@@ -36,6 +37,11 @@ import {
   isValidEmbedObject,
 } from "./educatorCourses.js";
 import { getEducatorCourseEnrollmentsSummary } from "./enrollmentSummary.js";
+import { SqliteSessionStore } from "./sessionStore.js";
+import { registerAuthAdminRoutes } from "./routes/authAdminRoutes.js";
+import { registerProfileRoutes } from "./routes/profileRoutes.js";
+import { registerEducatorRoutes } from "./routes/educatorRoutes.js";
+import { registerCourseRoutes } from "./routes/courseRoutes.js";
 
 const PREFERRED_PORT = Number(process.env.PORT) || 3001;
 const SERVER_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -275,13 +281,56 @@ const lessonVideoUpload = multer({
 });
 /** Written by `npm run dev:all` when Vite prints its Local URL (gitignored). */
 const FRONTEND_DEV_HINT_FILE = path.join(SERVER_DIR, "..", ".frontend-dev-url");
-const SESSION_SECRET =
-  process.env.SESSION_SECRET || "eduspmhub-dev-secret-change-in-production";
-const ADMIN_KEY = process.env.ADMIN_KEY || "dev-admin-change-me";
+const NODE_ENV = process.env.NODE_ENV || "development";
+const IS_PROD = NODE_ENV === "production";
+
+function requiredEnv(name) {
+  const val = String(process.env[name] || "").trim();
+  if (val) return val;
+  throw new Error(`Missing required environment variable: ${name}`);
+}
+
+function parseCsvEnv(v) {
+  return String(v || "")
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+const SESSION_SECRET = IS_PROD
+  ? requiredEnv("SESSION_SECRET")
+  : process.env.SESSION_SECRET || "eduspmhub-dev-secret-change-in-production";
+const ADMIN_KEY = IS_PROD
+  ? requiredEnv("ADMIN_KEY")
+  : process.env.ADMIN_KEY || "dev-admin-change-me";
+const SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** HMAC secret for short-lived lesson PDF/video URLs (defaults to session secret). */
 const LESSON_MEDIA_TOKEN_SECRET =
   process.env.LESSON_MEDIA_TOKEN_SECRET || SESSION_SECRET;
+const ALLOWED_CORS_ORIGINS = new Set(parseCsvEnv(process.env.CORS_ORIGINS));
+if (IS_PROD && ALLOWED_CORS_ORIGINS.size === 0) {
+  throw new Error(
+    "Missing required environment variable: CORS_ORIGINS (comma-separated allowed origins)"
+  );
+}
+
+function corsOrigin(origin, cb) {
+  if (!origin) {
+    cb(null, true);
+    return;
+  }
+  if (!IS_PROD) {
+    cb(null, true);
+    return;
+  }
+  if (ALLOWED_CORS_ORIGINS.has(origin)) {
+    cb(null, true);
+    return;
+  }
+  cb(new Error("CORS origin not allowed"));
+}
+
 const LESSON_MEDIA_TOKEN_TTL_SEC = (() => {
   const raw = Number.parseInt(process.env.LESSON_MEDIA_TOKEN_TTL_SEC || "", 10);
   if (Number.isFinite(raw) && raw >= 300 && raw <= 86400) return raw;
@@ -348,10 +397,39 @@ async function lessonStreamAccess(req, courseId, lessonIndex, kind) {
 }
 
 const app = express();
+const sessionStore = new SqliteSessionStore({ ttlMs: SESSION_MAX_AGE_MS });
+
+function makeLimiter({ windowMs, max, message, skipSuccessfulRequests = false }) {
+  return rateLimit({
+    windowMs,
+    max,
+    standardHeaders: true,
+    legacyHeaders: false,
+    skipSuccessfulRequests,
+    message: { error: message },
+  });
+}
+
+const registerLimiter = makeLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 12,
+  message: "Too many registration attempts. Please try again later.",
+});
+const loginLimiter = makeLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  skipSuccessfulRequests: true,
+  message: "Too many login attempts. Please try again in a few minutes.",
+});
+const adminLimiter = makeLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  message: "Too many admin requests. Please slow down and try again shortly.",
+});
 
 app.use(
   cors({
-    origin: true,
+    origin: corsOrigin,
     credentials: true,
     allowedHeaders: ["Content-Type", "X-Admin-Key"],
   })
@@ -361,14 +439,15 @@ app.use(express.json({ limit: "8mb" }));
 app.use(
   session({
     name: "eduspmhub.sid",
+    store: sessionStore,
     secret: SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
       sameSite: "lax",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-      secure: process.env.NODE_ENV === "production",
+      maxAge: SESSION_MAX_AGE_MS,
+      secure: IS_PROD,
     },
   })
 );
@@ -582,856 +661,106 @@ app.get("/api/dashboard/featured", async (req, res) => {
   }
 });
 
-app.get("/api/auth/me", async (req, res) => {
-  if (!req.session.userId) {
-    return res.json({ user: null });
-  }
-  const users = await loadUsers();
-  const u = findUserById(users, req.session.userId);
-  if (!u) {
-    req.session.destroy(() => {});
-    return res.json({ user: null });
-  }
-  res.json({ user: toPublicUser(u) });
-});
+const authAdminDeps = {
+  registerLimiter,
+  loginLimiter,
+  adminLimiter,
+  ADMIN_KEY,
+  LICENSE_DIR,
+  isSafeLicenseStorageKey,
+  loadUsers,
+  saveUsers,
+  findUserByEmail,
+  findUserById,
+  toPublicUser,
+  isLikelySchoolEmail,
+  bcrypt,
+  randomUUID,
+  existsSync,
+  path,
+};
 
-/** Public tutor card for signed-in learners — no email; lists published courses only. */
-app.get("/api/tutors/:userId", requireAuth, async (req, res) => {
-  try {
-    const userId =
-      typeof req.params.userId === "string" ? req.params.userId.trim() : req.params.userId;
-    const users = await loadUsers();
-    const u = findUserById(users, userId);
-    if (!u || u.role !== "educator") {
-      return res.status(404).json({ error: "Tutor not found" });
-    }
-    const tutor = toPublicTutorProfile(u);
-    if (!tutor) {
-      return res.status(404).json({ error: "Tutor not found" });
-    }
-    const ec = await loadEducatorCourses();
-    const published = ec.filter((c) => c.educatorId === u.id && c.status === "published");
-    const courses = published.map((c) => mapPublishedToCatalogShape(c, u.fullName));
-    res.json({ tutor, courses });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Could not load tutor profile" });
-  }
-});
-
-app.post("/api/auth/register", async (req, res) => {
-  try {
-    const {
-      email,
-      password,
-      role,
-      fullName,
-      schoolName,
-      studentForm,
-      studentSubject,
-      educatorInstitution,
-      educatorSubject,
-      educatorBio,
-    } = req.body;
-
-    if (!email || !password || !fullName || !role) {
-      return res.status(400).json({ error: "Missing required fields" });
-    }
-
-    if (!["student", "educator"].includes(role)) {
-      return res.status(400).json({ error: "Invalid role" });
-    }
-
-    if (password.length < 8) {
-      return res.status(400).json({ error: "Password must be at least 8 characters" });
-    }
-
-    if (role === "student") {
-      if (!studentSubject) {
-        return res.status(400).json({ error: "Subject is required for students" });
-      }
-      if (!schoolName || !String(schoolName).trim()) {
-        return res.status(400).json({ error: "School name is required" });
-      }
-      if (!isLikelySchoolEmail(String(email))) {
-        return res.status(400).json({
-          error:
-            "Students must register with a school email (not free providers like Gmail).",
-        });
-      }
-    }
-
-    if (role === "educator") {
-      if (!educatorSubject) {
-        return res.status(400).json({ error: "Subject is required for educators" });
-      }
-      if (!educatorInstitution || !String(educatorInstitution).trim()) {
-        return res.status(400).json({ error: "Institution is required for educators" });
-      }
-    }
-
-    const users = await loadUsers();
-    if (findUserByEmail(users, email)) {
-      return res.status(409).json({ error: "An account with this email already exists" });
-    }
-
-    const passwordHash = await bcrypt.hash(password, 10);
-    const user = {
-      id: randomUUID(),
-      email: String(email).trim().toLowerCase(),
-      passwordHash,
-      role,
-      verified: role === "student",
-      fullName: String(fullName).trim(),
-      schoolName: role === "student" ? String(schoolName).trim() : "",
-      studentForm: role === "student" ? String(studentForm || "") : "",
-      studentSubject: role === "student" ? String(studentSubject) : "",
-      educatorInstitution:
-        role === "educator" ? String(educatorInstitution).trim() : "",
-      educatorSubject: role === "educator" ? String(educatorSubject) : "",
-      educatorBio: role === "educator" ? String(educatorBio || "").trim() : "",
-      createdAt: new Date().toISOString(),
-    };
-
-    users.push(user);
-    await saveUsers(users);
-
-    req.session.userId = user.id;
-    res.status(201).json({ user: toPublicUser(user) });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Registration failed" });
-  }
-});
-
-app.post("/api/auth/login", async (req, res) => {
-  try {
-    const { email, password } = req.body;
-    if (!email || !password) {
-      return res.status(400).json({ error: "Email and password required" });
-    }
-    const users = await loadUsers();
-    const user = findUserByEmail(users, email);
-    if (!user) {
-      return res.status(401).json({ error: "Invalid email or password" });
-    }
-    const ok = await bcrypt.compare(password, user.passwordHash);
-    if (!ok) {
-      return res.status(401).json({ error: "Invalid email or password" });
-    }
-    req.session.userId = user.id;
-    res.json({ user: toPublicUser(user) });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Login failed" });
-  }
-});
-
-app.post("/api/auth/logout", (req, res) => {
-  req.session.destroy((err) => {
-    if (err) return res.status(500).json({ error: "Logout failed" });
-    res.clearCookie("eduspmhub.sid");
-    res.json({ ok: true });
-  });
-});
-
-app.patch("/api/profile", requireAuth, async (req, res) => {
-  try {
-    const users = await loadUsers();
-    const idx = users.findIndex((u) => u.id === req.session.userId);
-    if (idx === -1) return res.status(404).json({ error: "User not found" });
-    const u = users[idx];
-    const { fullName, schoolName, studentForm, educatorInstitution, educatorBio } =
-      req.body;
-
-    if (fullName != null) u.fullName = String(fullName).trim();
-    if (u.role === "student") {
-      if (schoolName != null) u.schoolName = String(schoolName).trim();
-      if (studentForm != null) u.studentForm = String(studentForm);
-    }
-    if (u.role === "educator") {
-      if (educatorInstitution != null) {
-        u.educatorInstitution = String(educatorInstitution).trim();
-      }
-      if (educatorBio != null) u.educatorBio = String(educatorBio).trim();
-    }
-
-    users[idx] = u;
-    await saveUsers(users);
-    res.json({ user: toPublicUser(u) });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Update failed" });
-  }
-});
-
-app.get("/api/courses", async (_req, res) => {
-  try {
-    const users = await loadUsers();
-    const courses = await getMergedPublicCourses(users);
-    const fromBuiltInCatalog = courses.filter((c) => c.source === "catalog").length;
-    const fromEducators = courses.filter((c) => c.source === "educator").length;
-    res.json({
-      courses,
-      stats: { fromBuiltInCatalog, fromEducators },
-    });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Could not load courses" });
-  }
-});
-
-const CATALOG_COURSE_BLURB =
-  "Curated SPM module on EduSPM Hub. Enrol to save it under My courses and keep your revision on track.";
-
-app.get("/api/courses/:id", async (req, res) => {
-  try {
-    const id = req.params.id;
-    const built = CATALOG.find((c) => c.id === id);
-    if (built) {
-      return res.json({
-        course: {
-          ...built,
-          source: "catalog",
-          description: CATALOG_COURSE_BLURB,
-        },
-      });
-    }
-    const users = await loadUsers();
-    const list = await loadEducatorCourses();
-    const c = list.find((x) => x.id === id);
-    if (!c || c.status !== "published") {
-      return res.status(404).json({ error: "Course not found" });
-    }
-    const owner = findUserById(users, c.educatorId);
-    const row = mapPublishedToCatalogShape(c, owner?.fullName);
-    res.json({
-      course: {
-        ...row,
-        description:
-          c.description?.trim() ||
-          "Tutor-published SPM course on EduSPM Hub. Enrol to add it to your study plan.",
-        createdAt: c.createdAt,
-        updatedAt: c.updatedAt,
-      },
-    });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Could not load course" });
-  }
-});
-
-app.get("/api/my-courses", requireAuth, async (req, res) => {
-  try {
-    const users = await loadUsers();
-    const u = findUserById(users, req.session.userId);
-    if (u?.role === "educator") {
-      const ecList = await loadEducatorCourses();
-      const list = ecList.filter((c) => c.educatorId === u.id);
-      list.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
-      const enroll = await loadEnrollments();
-      const summary = getEducatorCourseEnrollmentsSummary(u.id, ecList, enroll, users);
-      const byCourseId = new Map(summary.map((row) => [row.courseId, row]));
-      return res.json({
-        courses: list.map((c) => {
-          const row = byCourseId.get(c.id);
-          return {
-            ...mapToManagedRow(c, u.fullName),
-            enrollmentStudentCount: row?.studentCount ?? 0,
-            enrollmentStudents: row?.students ?? [],
-          };
-        }),
-      });
-    }
-    const enroll = await loadEnrollments();
-    const ids = enroll[req.session.userId] || [];
-    const ecList = await loadEducatorCourses();
-    const courses = [];
-    for (const id of ids) {
-      const row = await resolveStudentEnrolledCourseRow(id, users, ecList);
-      if (row) courses.push(row);
-    }
-    res.json({ courses });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Could not load courses" });
-  }
-});
-
-/** Short-lived signed URL for embedded PDF/video (same session user only; expires after TTL). */
-app.get(
-  "/api/course-access/:courseId/lesson-stream-url",
+const profileDeps = {
   requireAuth,
-  async (req, res) => {
-    try {
-      const courseId =
-        typeof req.params.courseId === "string"
-          ? req.params.courseId.trim()
-          : req.params.courseId;
-      const ctx = await courseAccessContext(req.session.userId, courseId);
-      if (ctx.err) return res.status(ctx.err).json({ error: ctx.msg });
-      const lessonIndex = Number.parseInt(String(req.query.lesson ?? ""), 10);
-      const kind = String(req.query.kind || "").toLowerCase();
-      if (kind !== "pdf" && kind !== "video") {
-        return res.status(400).json({ error: "kind must be pdf or video" });
-      }
-      const { course } = ctx;
-      if (
-        !Number.isFinite(lessonIndex) ||
-        lessonIndex < 0 ||
-        lessonIndex >= course.lessons
-      ) {
-        return res.status(400).json({ error: "Invalid lesson" });
-      }
-      const pages = normalizeLessonPages(course.lessonPages, course.lessons);
-      const row = pages[lessonIndex];
-      const okPdf = kind === "pdf" && row?.pdfKey && isSafeLessonPdfKey(row.pdfKey);
-      const okVid = kind === "video" && row?.videoKey && isSafeLessonVideoKey(row.videoKey);
-      if (!okPdf && !okVid) {
-        return res.status(404).json({
-          error: kind === "pdf" ? "No PDF for this lesson" : "No video for this lesson",
-        });
-      }
-      const exp = Math.floor(Date.now() / 1000) + LESSON_MEDIA_TOKEN_TTL_SEC;
-      const token = signLessonStreamToken({
-        uid: req.session.userId,
-        cid: course.id,
-        li: lessonIndex,
-        kind,
-        exp,
-      });
-      const sub = kind === "pdf" ? "pdf" : "video";
-      const path = `/api/course-access/${encodeURIComponent(course.id)}/lessons/${lessonIndex}/${sub}?st=${encodeURIComponent(token)}`;
-      res.json({
-        url: path,
-        expiresInSec: LESSON_MEDIA_TOKEN_TTL_SEC,
-      });
-    } catch (e) {
-      console.error(e);
-      res.status(500).json({ error: "Could not issue stream URL" });
-    }
-  }
-);
+  runLicenseUpload,
+  runProfilePhotoUpload,
+  loadUsers,
+  saveUsers,
+  findUserById,
+  toPublicUser,
+  unlink,
+  resolvedLicenseMeta,
+  isSafeLicenseStorageKey,
+  LICENSE_DIR,
+  path,
+  resolvedAvatarMeta,
+  isSafeAvatarStorageKey,
+  unlinkAvatarFile,
+  PROFILE_PHOTO_DIR,
+  existsSync,
+};
 
-/** Inline PDF for a lesson (same auth as course access). */
-app.get(
-  "/api/course-access/:courseId/lessons/:lessonIndex/pdf",
+const educatorDeps = {
   requireAuth,
-  async (req, res) => {
-    try {
-      const courseId =
-        typeof req.params.courseId === "string"
-          ? req.params.courseId.trim()
-          : req.params.courseId;
-      const lessonIndex = Number.parseInt(req.params.lessonIndex, 10);
-      const ctx = await lessonStreamAccess(req, courseId, lessonIndex, "pdf");
-      if (ctx.err) return res.status(ctx.err).json({ error: ctx.msg });
-      const { course } = ctx;
-      if (
-        !Number.isFinite(lessonIndex) ||
-        lessonIndex < 0 ||
-        lessonIndex >= course.lessons
-      ) {
-        return res.status(400).json({ error: "Invalid lesson index" });
-      }
-      const pages = normalizeLessonPages(course.lessonPages, course.lessons);
-      const row = pages[lessonIndex];
-      const key = row?.pdfKey;
-      if (!key || !isSafeLessonPdfKey(key)) {
-        return res.status(404).json({ error: "No PDF for this lesson" });
-      }
-      const abs = path.join(LESSON_PDF_DIR, key);
-      if (!existsSync(abs)) return res.status(404).json({ error: "File missing" });
-      const rawName = row.pdfOriginalName || "lesson.pdf";
-      const asciiName =
-        String(rawName)
-          .replace(/[^\w.\- ()]+/g, "_")
-          .slice(0, 120) || "lesson.pdf";
-      res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Disposition", `inline; filename="${asciiName}"`);
-      res.sendFile(path.resolve(abs));
-    } catch (e) {
-      console.error(e);
-      res.status(500).json({ error: "Could not load PDF" });
-    }
-  }
-);
-
-/** Inline lesson video (same auth as course access; Range requests supported for seeking). */
-app.get(
-  "/api/course-access/:courseId/lessons/:lessonIndex/video",
-  requireAuth,
-  async (req, res) => {
-    try {
-      const courseId =
-        typeof req.params.courseId === "string"
-          ? req.params.courseId.trim()
-          : req.params.courseId;
-      const lessonIndex = Number.parseInt(req.params.lessonIndex, 10);
-      const ctx = await lessonStreamAccess(req, courseId, lessonIndex, "video");
-      if (!key || !isSafeLessonVideoKey(key)) {
-        return res.status(404).json({ error: "No video for this lesson" });
-      }
-      const abs = path.join(LESSON_VIDEO_DIR, key);
-      if (!existsSync(abs)) return res.status(404).json({ error: "File missing" });
-      const rawName = row.videoOriginalName || "lesson.mp4";
-      const asciiName =
-        String(rawName)
-          .replace(/[^\w.\- ()]+/g, "_")
-          .slice(0, 120) || "lesson.mp4";
-      res.setHeader("Content-Type", lessonVideoContentType(key));
-      res.setHeader("Content-Disposition", `inline; filename="${asciiName}"`);
-      res.sendFile(path.resolve(abs));
-    } catch (e) {
-      console.error(e);
-      res.status(500).json({ error: "Could not load video" });
-    }
-  }
-);
-
-/** Full lesson content: enrolled students (published) or the owning educator (any status). */
-app.get("/api/course-access/:courseId", requireAuth, async (req, res) => {
-  try {
-    const courseId = req.params.courseId;
-    const ctx = await courseAccessContext(req.session.userId, courseId);
-    if (ctx.err) return res.status(ctx.err).json({ error: ctx.msg });
-    const { course } = ctx;
-    const users = await loadUsers();
-    const owner = findUserById(users, course.educatorId);
-    const pages = normalizeLessonPages(course.lessonPages, course.lessons);
-    const lessonPages = pages.map((p) => {
-      const ev = p.embedVideo;
-      const hasExternal = isValidEmbedObject(ev);
-      let externalVideoUrl = "";
-      if (hasExternal && ev.provider === "youtube") {
-        externalVideoUrl = `https://www.youtube.com/watch?v=${ev.id}`;
-      } else if (hasExternal && ev.provider === "vimeo") {
-        externalVideoUrl = `https://vimeo.com/${ev.id}`;
-      }
-      return {
-        title: p.title,
-        body: p.body,
-        hasPdf: Boolean(p.pdfKey),
-        pdfOriginalName: p.pdfOriginalName || "",
-        hasVideo: Boolean(p.videoKey),
-        videoOriginalName: p.videoOriginalName || "",
-        hasExternalVideo: hasExternal,
-        externalVideoProvider: hasExternal ? ev.provider : "",
-        externalVideoId: hasExternal ? ev.id : "",
-        externalVideoUrl,
-      };
-    });
-    res.json({
-      course: {
-        id: course.id,
-        title: course.title,
-        subject: course.subject,
-        description: course.description || "",
-        lessons: course.lessons,
-        price: course.price,
-        thumb: course.thumb || "",
-        status: course.status,
-        educator: owner?.fullName || "Educator",
-        educatorId: course.educatorId,
-        source: "educator",
-      },
-      lessonPages,
-    });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Could not load course" });
-  }
-});
-
-app.post("/api/my-courses/enroll", requireAuth, async (req, res) => {
-  try {
-    const { courseId } = req.body;
-    if (!courseId) {
-      return res.status(400).json({ error: "courseId required" });
-    }
-    const users = await loadUsers();
-    const u = findUserById(users, req.session.userId);
-    if (u?.role !== "student") {
-      return res.status(403).json({ error: "Only students can enrol in courses" });
-    }
-    const ecList = await loadEducatorCourses();
-    const row = await resolveStudentEnrolledCourseRow(courseId, users, ecList);
-    if (!row) {
-      return res.status(400).json({ error: "Invalid or unpublished course" });
-    }
-    const enroll = await loadEnrollments();
-    const list = enroll[req.session.userId] || [];
-    if (!list.includes(courseId)) {
-      list.push(courseId);
-      enroll[req.session.userId] = list;
-      await saveEnrollments(enroll);
-    }
-    const courses = [];
-    for (const id of list) {
-      const r = await resolveStudentEnrolledCourseRow(id, users, ecList);
-      if (r) courses.push(r);
-    }
-    res.json({ courses });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Enrol failed" });
-  }
-});
-
-app.get("/api/educator/course-enrollments", requireAuth, async (req, res) => {
-  try {
-    const users = await loadUsers();
-    const u = findUserById(users, req.session.userId);
-    if (!u || u.role !== "educator") {
-      return res.status(403).json({ error: "Educator access only" });
-    }
-    const ecList = await loadEducatorCourses();
-    const enroll = await loadEnrollments();
-    const courses = getEducatorCourseEnrollmentsSummary(u.id, ecList, enroll, users);
-    res.json({ courses });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Could not load enrolments" });
-  }
-});
-
-app.get("/api/educator/status", requireAuth, async (req, res) => {
-  const users = await loadUsers();
-  const u = findUserById(users, req.session.userId);
-  if (!u || u.role !== "educator") {
-    return res.status(403).json({ error: "Not an educator" });
-  }
-  res.json({
-    verified: Boolean(u.verified),
-    canAddCourse: Boolean(u.verified),
-    canPublish: Boolean(u.verified),
-    hasLicenseDocument: Boolean(u.licenseStorageKey),
-  });
-});
-
-app.post("/api/educator/courses", requireEducatorVerified, async (req, res) => {
-  try {
-    const users = await loadUsers();
-    const u = findUserById(users, req.session.userId);
-    const {
-      title,
-      description = "",
-      subject,
-      price,
-      lessons = 1,
-      thumb = "",
-      status = "draft",
-    } = req.body || {};
-    const t = String(title || "").trim();
-    if (!t) return res.status(400).json({ error: "Title is required" });
-    const subj = String(subject || "").trim();
-    if (!subj) return res.status(400).json({ error: "Subject is required" });
-    let st = String(status || "draft").toLowerCase();
-    if (st !== "draft" && st !== "published") st = "draft";
-    const now = new Date().toISOString();
-    const lessonsN = clampLessons(lessons);
-    const course = {
-      id: randomUUID(),
-      educatorId: u.id,
-      title: t.slice(0, 200),
-      description: String(description || "").slice(0, 8000),
-      subject: subj.slice(0, 120),
-      price: normalizePrice(price),
-      lessons: lessonsN,
-      lessonPages: normalizeLessonPages(req.body?.lessonPages, lessonsN),
-      thumb: String(thumb || "").slice(0, 24),
-      status: st,
-      createdAt: now,
-      updatedAt: now,
-    };
-    const list = await loadEducatorCourses();
-    list.push(course);
-    await saveEducatorCourses(list);
-    res.status(201).json({ course: mapToManagedRow(course, u.fullName) });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Could not create course" });
-  }
-});
-
-app.patch(
-  "/api/educator/courses/:id",
-  requireEducatorVerified,
-  loadOwnedEducatorCourse,
-  async (req, res) => {
-    try {
-      const { title, description, subject, price, lessons, thumb, status, lessonPages } =
-        req.body || {};
-      const list = req.ecList;
-      const course = req.ecCourse;
-      const idx = list.findIndex((c) => c.id === course.id);
-      if (idx === -1) {
-        console.error("PATCH educator course: course missing from list", course.id);
-        return res.status(500).json({ error: "Server could not update course (store mismatch)" });
-      }
-      const mergeMediaFrom = [...(course.lessonPages || [])];
-      if (title != null) {
-        const nt = String(title).trim();
-        if (nt) course.title = nt.slice(0, 200);
-      }
-      if (description != null) course.description = String(description).slice(0, 8000);
-      if (subject != null) {
-        const ns = String(subject).trim();
-        if (ns) course.subject = ns.slice(0, 120);
-      }
-      if (price != null) course.price = normalizePrice(price);
-      if (lessons != null) {
-        const newN = clampLessons(lessons);
-        const oldPages = mergeMediaFrom;
-        if (newN < oldPages.length) {
-          for (let j = newN; j < oldPages.length; j++) {
-            await unlinkLessonPdfFile(oldPages[j]?.pdfKey);
-            await unlinkLessonVideoFile(oldPages[j]?.videoKey);
-          }
-        }
-        course.lessons = newN;
-      }
-      if (thumb != null) course.thumb = String(thumb).slice(0, 24);
-      if (status != null) {
-        const s = String(status).toLowerCase();
-        if (s === "draft" || s === "published") course.status = s;
-      }
-      if (lessonPages != null) {
-        const lpArr = Array.isArray(lessonPages) ? lessonPages : [];
-        for (let i = 0; i < lpArr.length; i++) {
-          const cell = lpArr[i];
-          if (cell && Object.prototype.hasOwnProperty.call(cell, "externalVideoUrl")) {
-            const t = String(cell.externalVideoUrl ?? "").trim();
-            if (t && !parseExternalVideoUrl(t)) {
-              return res.status(400).json({
-                error: `Lesson ${i + 1}: use a full YouTube or Vimeo watch link (that URL was not recognised).`,
-              });
-            }
-          }
-        }
-        const nextPages = normalizeLessonPages(lessonPages, course.lessons, mergeMediaFrom);
-        await unlinkOrphanedLessonFiles(mergeMediaFrom, nextPages);
-        course.lessonPages = nextPages;
-      } else if (lessons != null) {
-        course.lessonPages = normalizeLessonPages(mergeMediaFrom, course.lessons, mergeMediaFrom);
-      }
-      course.updatedAt = new Date().toISOString();
-      list[idx] = course;
-      await saveEducatorCourses(list);
-      res.json({ course: mapToManagedRow(course, req.ecUser.fullName) });
-    } catch (e) {
-      console.error(e);
-      res.status(500).json({ error: "Update failed" });
-    }
-  }
-);
-
-app.post(
-  "/api/educator/courses/:id/lessons/:lessonIndex/pdf",
   requireEducatorVerified,
   loadOwnedEducatorCourse,
   runLessonPdfUpload,
-  async (req, res) => {
-    try {
-      if (!req.file) {
-        return res.status(400).json({
-          error: 'Missing file: use multipart field name "pdf" (PDF only, max 15 MB).',
-        });
-      }
-      const lessonIndex = Number.parseInt(req.params.lessonIndex, 10);
-      const course = req.ecCourse;
-      const list = req.ecList;
-      if (
-        !Number.isFinite(lessonIndex) ||
-        lessonIndex < 0 ||
-        lessonIndex >= course.lessons
-      ) {
-        await unlink(req.file.path).catch(() => {});
-        return res.status(400).json({ error: "Invalid lesson index" });
-      }
-      const pages = normalizeLessonPages(course.lessonPages, course.lessons);
-      const oldKey = pages[lessonIndex]?.pdfKey;
-      if (oldKey) await unlinkLessonPdfFile(oldKey);
-      const oldVid = pages[lessonIndex]?.videoKey;
-      if (oldVid) await unlinkLessonVideoFile(oldVid);
-      const key = req.file.filename;
-      if (!isSafeLessonPdfKey(key)) {
-        await unlink(req.file.path).catch(() => {});
-        return res.status(500).json({ error: "Invalid stored file name" });
-      }
-      pages[lessonIndex] = {
-        ...pages[lessonIndex],
-        pdfKey: key,
-        pdfOriginalName: String(req.file.originalname || "handout.pdf").slice(0, 200),
-      };
-      delete pages[lessonIndex].videoKey;
-      delete pages[lessonIndex].videoOriginalName;
-      delete pages[lessonIndex].embedVideo;
-      course.lessonPages = pages;
-      course.updatedAt = new Date().toISOString();
-      const idx = list.findIndex((c) => c.id === course.id);
-      list[idx] = course;
-      await saveEducatorCourses(list);
-      res.json({
-        lessonIndex,
-        hasPdf: true,
-        pdfOriginalName: pages[lessonIndex].pdfOriginalName,
-        course: mapToManagedRow(course, req.ecUser.fullName),
-      });
-    } catch (e) {
-      console.error(e);
-      if (req.file?.path) await unlink(req.file.path).catch(() => {});
-      res.status(500).json({ error: "Could not save lesson PDF" });
-    }
-  }
-);
-
-app.delete(
-  "/api/educator/courses/:id/lessons/:lessonIndex/pdf",
-  requireEducatorVerified,
-  loadOwnedEducatorCourse,
-  async (req, res) => {
-    try {
-      const lessonIndex = Number.parseInt(req.params.lessonIndex, 10);
-      const course = req.ecCourse;
-      const list = req.ecList;
-      if (
-        !Number.isFinite(lessonIndex) ||
-        lessonIndex < 0 ||
-        lessonIndex >= course.lessons
-      ) {
-        return res.status(400).json({ error: "Invalid lesson index" });
-      }
-      const pages = normalizeLessonPages(course.lessonPages, course.lessons);
-      const oldKey = pages[lessonIndex]?.pdfKey;
-      if (oldKey) await unlinkLessonPdfFile(oldKey);
-      delete pages[lessonIndex].pdfKey;
-      delete pages[lessonIndex].pdfOriginalName;
-      course.lessonPages = pages;
-      course.updatedAt = new Date().toISOString();
-      const idx = list.findIndex((c) => c.id === course.id);
-      list[idx] = course;
-      await saveEducatorCourses(list);
-      res.json({ course: mapToManagedRow(course, req.ecUser.fullName) });
-    } catch (e) {
-      console.error(e);
-      res.status(500).json({ error: "Could not remove PDF" });
-    }
-  }
-);
-
-app.post(
-  "/api/educator/courses/:id/lessons/:lessonIndex/video",
-  requireEducatorVerified,
-  loadOwnedEducatorCourse,
   runLessonVideoUpload,
-  async (req, res) => {
-    try {
-      if (!req.file) {
-        return res.status(400).json({
-          error: 'Missing file: use multipart field name "video" (MP4 or WebM, max 120 MB).',
-        });
-      }
-      const lessonIndex = Number.parseInt(req.params.lessonIndex, 10);
-      const course = req.ecCourse;
-      const list = req.ecList;
-      if (
-        !Number.isFinite(lessonIndex) ||
-        lessonIndex < 0 ||
-        lessonIndex >= course.lessons
-      ) {
-        await unlink(req.file.path).catch(() => {});
-        return res.status(400).json({ error: "Invalid lesson index" });
-      }
-      const pages = normalizeLessonPages(course.lessonPages, course.lessons);
-      const oldVid = pages[lessonIndex]?.videoKey;
-      if (oldVid) await unlinkLessonVideoFile(oldVid);
-      const oldPdf = pages[lessonIndex]?.pdfKey;
-      if (oldPdf) await unlinkLessonPdfFile(oldPdf);
-      const key = req.file.filename;
-      if (!isSafeLessonVideoKey(key)) {
-        await unlink(req.file.path).catch(() => {});
-        return res.status(500).json({ error: "Invalid stored file name" });
-      }
-      pages[lessonIndex] = {
-        ...pages[lessonIndex],
-        videoKey: key,
-        videoOriginalName: String(req.file.originalname || "lesson.mp4").slice(0, 200),
-      };
-      delete pages[lessonIndex].pdfKey;
-      delete pages[lessonIndex].pdfOriginalName;
-      delete pages[lessonIndex].embedVideo;
-      course.lessonPages = pages;
-      course.updatedAt = new Date().toISOString();
-      const idx = list.findIndex((c) => c.id === course.id);
-      list[idx] = course;
-      await saveEducatorCourses(list);
-      res.json({
-        lessonIndex,
-        hasVideo: true,
-        videoOriginalName: pages[lessonIndex].videoOriginalName,
-        course: mapToManagedRow(course, req.ecUser.fullName),
-      });
-    } catch (e) {
-      console.error(e);
-      if (req.file?.path) await unlink(req.file.path).catch(() => {});
-      res.status(500).json({ error: "Could not save lesson video" });
-    }
-  }
-);
+  loadUsers,
+  loadEnrollments,
+  loadEducatorCourses,
+  saveEducatorCourses,
+  findUserById,
+  getEducatorCourseEnrollmentsSummary,
+  mapToManagedRow,
+  normalizePrice,
+  clampLessons,
+  normalizeLessonPages,
+  parseExternalVideoUrl,
+  isSafeLessonPdfKey,
+  isSafeLessonVideoKey,
+  unlinkLessonPdfFile,
+  unlinkLessonVideoFile,
+  unlinkOrphanedLessonFiles,
+  unlinkCourseLessonAttachments,
+  removeCourseIdFromEnrollments,
+  randomUUID,
+  unlink,
+};
 
-app.delete(
-  "/api/educator/courses/:id/lessons/:lessonIndex/video",
-  requireEducatorVerified,
-  loadOwnedEducatorCourse,
-  async (req, res) => {
-    try {
-      const lessonIndex = Number.parseInt(req.params.lessonIndex, 10);
-      const course = req.ecCourse;
-      const list = req.ecList;
-      if (
-        !Number.isFinite(lessonIndex) ||
-        lessonIndex < 0 ||
-        lessonIndex >= course.lessons
-      ) {
-        return res.status(400).json({ error: "Invalid lesson index" });
-      }
-      const pages = normalizeLessonPages(course.lessonPages, course.lessons);
-      const oldKey = pages[lessonIndex]?.videoKey;
-      if (oldKey) await unlinkLessonVideoFile(oldKey);
-      delete pages[lessonIndex].videoKey;
-      delete pages[lessonIndex].videoOriginalName;
-      course.lessonPages = pages;
-      course.updatedAt = new Date().toISOString();
-      const idx = list.findIndex((c) => c.id === course.id);
-      list[idx] = course;
-      await saveEducatorCourses(list);
-      res.json({ course: mapToManagedRow(course, req.ecUser.fullName) });
-    } catch (e) {
-      console.error(e);
-      res.status(500).json({ error: "Could not remove video" });
-    }
-  }
-);
+const courseDeps = {
+  requireAuth,
+  CATALOG,
+  loadUsers,
+  loadEnrollments,
+  saveEnrollments,
+  loadEducatorCourses,
+  findUserById,
+  toPublicTutorProfile,
+  mapPublishedToCatalogShape,
+  getMergedPublicCourses,
+  resolveStudentEnrolledCourseRow,
+  getEducatorCourseEnrollmentsSummary,
+  mapToManagedRow,
+  courseAccessContext,
+  lessonStreamAccess,
+  normalizeLessonPages,
+  isSafeLessonPdfKey,
+  isSafeLessonVideoKey,
+  LESSON_PDF_DIR,
+  LESSON_VIDEO_DIR,
+  existsSync,
+  path,
+  lessonVideoContentType,
+  isValidEmbedObject,
+  LESSON_MEDIA_TOKEN_TTL_SEC,
+  signLessonStreamToken,
+};
 
-app.delete(
-  "/api/educator/courses/:id",
-  requireEducatorVerified,
-  loadOwnedEducatorCourse,
-  async (req, res) => {
-    try {
-      const id = req.params.id;
-      await unlinkCourseLessonAttachments(req.ecCourse);
-      const list = req.ecList.filter((c) => c.id !== id);
-      await saveEducatorCourses(list);
-      await removeCourseIdFromEnrollments(id);
-      res.json({ ok: true });
-    } catch (e) {
-      console.error(e);
-      res.status(500).json({ error: "Delete failed" });
-    }
-  }
-);
+registerAuthAdminRoutes(app, authAdminDeps);
+registerProfileRoutes(app, profileDeps);
+registerEducatorRoutes(app, educatorDeps);
+registerCourseRoutes(app, courseDeps);
 
 function runLicenseUpload(req, res, next) {
   licenseUpload.single("license")(req, res, (err) => {
@@ -1503,200 +832,6 @@ function runProfilePhotoUpload(req, res, next) {
   });
 }
 
-app.post("/api/educator/license", requireAuth, runLicenseUpload, async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({
-        error: 'Missing file: use multipart field name "license" (PDF, JPEG, or PNG).',
-      });
-    }
-    const users = await loadUsers();
-    const idx = users.findIndex((u) => u.id === req.session.userId);
-    if (idx === -1) {
-      await unlink(req.file.path).catch(() => {});
-      return res.status(404).json({ error: "User not found" });
-    }
-    const u = users[idx];
-    if (u.role !== "educator") {
-      await unlink(req.file.path).catch(() => {});
-      return res.status(403).json({ error: "Only educator accounts may upload a licence" });
-    }
-    const oldKey = u.licenseStorageKey;
-    u.licenseStorageKey = req.file.filename;
-    u.licenseOriginalName = String(req.file.originalname || "document").slice(0, 200);
-    const meta = resolvedLicenseMeta(req.file);
-    u.licenseMimeType = meta?.mime || req.file.mimetype;
-    u.licenseUploadedAt = new Date().toISOString();
-    users[idx] = u;
-    await saveUsers(users);
-    if (oldKey && oldKey !== req.file.filename && isSafeLicenseStorageKey(oldKey)) {
-      const oldPath = path.join(LICENSE_DIR, oldKey);
-      await unlink(oldPath).catch(() => {});
-    }
-    res.json({ user: toPublicUser(u) });
-  } catch (e) {
-    console.error(e);
-    if (req.file?.path) await unlink(req.file.path).catch(() => {});
-    res.status(500).json({ error: "Could not save licence upload" });
-  }
-});
-
-app.post("/api/profile/photo", requireAuth, runProfilePhotoUpload, async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({
-        error: 'Missing file: use multipart field name "photo" (JPEG, PNG, or WebP, max 3 MB).',
-      });
-    }
-    const users = await loadUsers();
-    const idx = users.findIndex((u) => u.id === req.session.userId);
-    if (idx === -1) {
-      await unlink(req.file.path).catch(() => {});
-      return res.status(404).json({ error: "User not found" });
-    }
-    const u = users[idx];
-    if (u.role !== "student" && u.role !== "educator") {
-      await unlink(req.file.path).catch(() => {});
-      return res.status(403).json({
-        error: "Profile photo is only for student or educator accounts.",
-      });
-    }
-    const meta = resolvedAvatarMeta(req.file);
-    const oldKey = u.avatarStorageKey;
-    u.avatarStorageKey = req.file.filename;
-    u.avatarMimeType = meta?.mime || req.file.mimetype || "image/jpeg";
-    u.avatarUploadedAt = new Date().toISOString();
-    users[idx] = u;
-    await saveUsers(users);
-    if (oldKey && oldKey !== req.file.filename && isSafeAvatarStorageKey(oldKey)) {
-      await unlinkAvatarFile(oldKey);
-    }
-    res.json({ user: toPublicUser(u) });
-  } catch (e) {
-    console.error(e);
-    if (req.file?.path) await unlink(req.file.path).catch(() => {});
-    res.status(500).json({ error: "Could not save profile photo" });
-  }
-});
-
-app.delete("/api/profile/photo", requireAuth, async (req, res) => {
-  try {
-    const users = await loadUsers();
-    const idx = users.findIndex((u) => u.id === req.session.userId);
-    if (idx === -1) return res.status(404).json({ error: "User not found" });
-    const u = users[idx];
-    const oldKey = u.avatarStorageKey;
-    delete u.avatarStorageKey;
-    delete u.avatarMimeType;
-    delete u.avatarUploadedAt;
-    users[idx] = u;
-    await saveUsers(users);
-    if (oldKey && isSafeAvatarStorageKey(oldKey)) await unlinkAvatarFile(oldKey);
-    res.json({ user: toPublicUser(u) });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Could not remove photo" });
-  }
-});
-
-app.get("/api/profile/photo/:userId", requireAuth, async (req, res) => {
-  try {
-    const userId =
-      typeof req.params.userId === "string" ? req.params.userId.trim() : req.params.userId;
-    const users = await loadUsers();
-    const target = findUserById(users, userId);
-    if (!target?.avatarStorageKey || !isSafeAvatarStorageKey(target.avatarStorageKey)) {
-      return res.status(404).end();
-    }
-    const abs = path.join(PROFILE_PHOTO_DIR, target.avatarStorageKey);
-    if (!existsSync(abs)) {
-      return res.status(404).end();
-    }
-    const mime = target.avatarMimeType || "image/jpeg";
-    res.setHeader("Content-Type", mime);
-    res.setHeader("Cache-Control", "private, max-age=300");
-    res.sendFile(abs, (err) => {
-      if (err && !res.headersSent) res.status(500).end();
-    });
-  } catch (e) {
-    console.error(e);
-    if (!res.headersSent) res.status(500).end();
-  }
-});
-
-/** Admin: educators awaiting verification (for staff review queue). */
-app.get("/api/admin/educators-pending", async (req, res) => {
-  const key = req.get("x-admin-key");
-  if (!key || key !== ADMIN_KEY) {
-    return res.status(403).json({ error: "Forbidden" });
-  }
-  const users = await loadUsers();
-  const educators = users
-    .filter((u) => u.role === "educator" && !u.verified)
-    .map((u) => ({
-      id: u.id,
-      email: u.email,
-      fullName: u.fullName,
-      educatorSubject: u.educatorSubject || "",
-      educatorInstitution: u.educatorInstitution || "",
-      hasLicenseDocument: Boolean(u.licenseStorageKey),
-      licenseUploadedAt: u.licenseUploadedAt || null,
-    }));
-  res.json({ educators });
-});
-
-/** Admin: download submitted licence file for review (not exposed to students). */
-app.get("/api/admin/educator/:id/license", async (req, res) => {
-  const key = req.get("x-admin-key");
-  if (!key || key !== ADMIN_KEY) {
-    return res.status(403).json({ error: "Forbidden" });
-  }
-  const users = await loadUsers();
-  const u = findUserById(users, req.params.id);
-  if (!u || u.role !== "educator") {
-    return res.status(404).json({ error: "Educator not found" });
-  }
-  if (!u.licenseStorageKey || !isSafeLicenseStorageKey(u.licenseStorageKey)) {
-    return res.status(404).json({ error: "No licence file on record" });
-  }
-  const abs = path.join(LICENSE_DIR, u.licenseStorageKey);
-  if (!existsSync(abs)) {
-    return res.status(404).json({ error: "File missing on server" });
-  }
-  const mime = u.licenseMimeType || "application/octet-stream";
-  res.setHeader("Content-Type", mime);
-  const safeName = String(u.licenseOriginalName || "educator-licence").replace(
-    /[^\w.\- ()]+/g,
-    "_"
-  );
-  res.setHeader("Content-Disposition", `attachment; filename="${safeName}"`);
-  res.sendFile(path.resolve(abs));
-});
-
-/** Dev / ops: verify an educator by email. Send header X-Admin-Key */
-app.post("/api/admin/verify-educator", async (req, res) => {
-  const key = req.get("x-admin-key");
-  if (!key || key !== ADMIN_KEY) {
-    return res.status(403).json({ error: "Forbidden" });
-  }
-  const { email } = req.body;
-  if (!email) return res.status(400).json({ error: "email required" });
-  const users = await loadUsers();
-  const u = findUserByEmail(users, email);
-  if (!u || u.role !== "educator") {
-    return res.status(404).json({ error: "Educator not found" });
-  }
-  if (!u.verified && !u.licenseStorageKey) {
-    return res.status(400).json({
-      error:
-        "Cannot verify: this educator has not uploaded a certified licence document yet. Ask them to upload on Profile first.",
-    });
-  }
-  u.verified = true;
-  await saveUsers(users);
-  res.json({ ok: true, user: toPublicUser(u) });
-});
-
 /** Try successive ports when the preferred one is already in use (e.g. a previous dev server). */
 function listenWithFallback(app, startPort, maxAttempts = 30) {
   return new Promise((resolve, reject) => {
@@ -1741,7 +876,7 @@ listenWithFallback(app, PREFERRED_PORT)
     console.log(`EduSPM_API_PORT=${port}`);
     console.log(`EduSPM Hub API http://localhost:${port}`);
     console.log(
-      `Built-in catalogue seed rows: ${CATALOG.length} (tutor listings are in server/data/educator-courses.json)`
+      `Built-in catalogue seed rows: ${CATALOG.length} (tutor listings are stored in SQLite at server/data/eduspmhub.sqlite by default)`
     );
   })
   .catch((err) => {

@@ -55,7 +55,11 @@ export async function buildFeaturedPayload(sessionUserId) {
         : 0),
   }));
   scored.sort((a, b) => b._score - a._score || a.title.localeCompare(b.title));
-  const recommended = scored.slice(0, 3).map(({ _score, ...c }) => c);
+  const recommended = scored.slice(0, 3).map((entry) => {
+    const copy = { ...entry };
+    delete copy._score;
+    return copy;
+  });
 
   const popular = [...publishedCourses]
     .sort(

@@ -2,8 +2,14 @@ node_modules
 dist
 .DS_Store
 *.local
+.env
+.env.*
+!.env.example
 server/data/users.json
 server/data/enrollments.json
 server/data/educator-courses.json
+server/data/*.sqlite
+server/data/*.sqlite-shm
+server/data/*.sqlite-wal
 .frontend-dev-url
 server/uploads/

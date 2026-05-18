@@ -48,6 +48,8 @@ export default function CoursePlayerPage() {
   }
 
   const page = pages[activeIdx];
+  const hasPage = Boolean(page);
+  const hasPdf = Boolean(page?.hasPdf);
   const course = payload?.course;
   const hasLessonMedia = Boolean(page?.hasPdf || page?.hasVideo || page?.hasExternalVideo);
   const embedSrc = useMemo(() => {
@@ -72,13 +74,13 @@ export default function CoursePlayerPage() {
   const videoSrc = videoFallback;
 
   useEffect(() => {
-    if (!courseId || !page) {
+    if (!courseId || !hasPage) {
       setSignedPdfUrl("");
       return;
     }
     let cancelled = false;
     (async () => {
-      if (page.hasPdf) {
+      if (hasPdf) {
         try {
           const d = await apiJson(
             `/api/course-access/${encodeURIComponent(courseId)}/lesson-stream-url?lesson=${activeIdx}&kind=pdf`
@@ -94,7 +96,7 @@ export default function CoursePlayerPage() {
     return () => {
       cancelled = true;
     };
-  }, [courseId, activeIdx, page?.hasPdf]);
+  }, [courseId, activeIdx, hasPage, hasPdf]);
 
   const watermarkText = useMemo(() => {
     const name = String(user?.fullName || "").trim();

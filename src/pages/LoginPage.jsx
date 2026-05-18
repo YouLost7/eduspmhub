@@ -3,6 +3,14 @@ import { Link, useNavigate, useLocation, useSearchParams } from "react-router-do
 import { motion } from "framer-motion";
 import { useAuth } from "../context/AuthContext.jsx";
 
+function safeAppPath(target) {
+  const t = String(target || "").trim();
+  if (!t.startsWith("/")) return "/browse";
+  if (t.startsWith("//")) return "/browse";
+  if (t.startsWith("/\\")) return "/browse";
+  return t;
+}
+
 export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -14,7 +22,7 @@ export default function LoginPage() {
   const qNext = searchParams.get("next");
   const enroll = searchParams.get("enroll");
   const fromState = location.state && location.state.from;
-  const baseTarget = fromState || qNext || "/browse";
+  const baseTarget = safeAppPath(fromState || qNext || "/browse");
 
   async function onSubmit(e) {
     e.preventDefault();

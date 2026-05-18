@@ -1,45 +1,91 @@
-import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { getDb, sqlite } from "./sqlite.js";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = join(__dirname, "data");
-const USERS_PATH = join(DATA_DIR, "users.json");
-const ENROLLMENTS_PATH = join(DATA_DIR, "enrollments.json");
-
-async function ensureDataDir() {
-  await mkdir(DATA_DIR, { recursive: true });
-}
-
-async function readJson(path, fallback) {
+function parseJsonArray(raw) {
   try {
-    const raw = await readFile(path, "utf8");
-    return JSON.parse(raw);
+    const v = JSON.parse(String(raw || "[]"));
+    return Array.isArray(v) ? v : [];
   } catch {
-    return fallback;
+    return [];
   }
 }
 
-async function writeJson(path, data) {
-  await ensureDataDir();
-  await writeFile(path, JSON.stringify(data, null, 2), "utf8");
+function parseJsonObject(raw) {
+  try {
+    const v = JSON.parse(String(raw || "{}"));
+    return v && typeof v === "object" && !Array.isArray(v) ? v : {};
+  } catch {
+    return {};
+  }
 }
 
 export async function loadUsers() {
-  return readJson(USERS_PATH, []);
+  const db = await getDb();
+  const rows = await sqlite.all(db, "SELECT data FROM users ORDER BY rowid ASC");
+  return rows.map((r) => {
+    try {
+      return JSON.parse(r.data);
+    } catch {
+      return null;
+    }
+  }).filter(Boolean);
 }
 
 export async function saveUsers(users) {
-  await writeJson(USERS_PATH, users);
+  const db = await getDb();
+  await sqlite.run(db, "BEGIN IMMEDIATE");
+  try {
+    await sqlite.run(db, "DELETE FROM users");
+    for (const u of users) {
+      if (!u || typeof u !== "object") continue;
+      const id = String(u.id || "").trim();
+      const email = String(u.email || "").trim().toLowerCase();
+      if (!id || !email) continue;
+      await sqlite.run(
+        db,
+        "INSERT INTO users (id, email, data) VALUES (?, ?, ?)",
+        [id, email, JSON.stringify(u)]
+      );
+    }
+    await sqlite.run(db, "COMMIT");
+  } catch (e) {
+    await sqlite.run(db, "ROLLBACK").catch(() => {});
+    throw e;
+  }
 }
 
 export async function loadEnrollments() {
-  return readJson(ENROLLMENTS_PATH, {});
+  const db = await getDb();
+  const rows = await sqlite.all(
+    db,
+    "SELECT user_id, data FROM enrollments ORDER BY rowid ASC"
+  );
+  const out = {};
+  for (const r of rows) {
+    out[r.user_id] = parseJsonArray(r.data).map((id) => String(id));
+  }
+  return out;
 }
 
 /** @returns {Promise<Record<string, string[]>>} userId -> courseIds */
 export async function saveEnrollments(map) {
-  await writeJson(ENROLLMENTS_PATH, map);
+  const db = await getDb();
+  const payload = parseJsonObject(JSON.stringify(map || {}));
+  await sqlite.run(db, "BEGIN IMMEDIATE");
+  try {
+    await sqlite.run(db, "DELETE FROM enrollments");
+    for (const [uid, ids] of Object.entries(payload)) {
+      const list = Array.isArray(ids) ? ids.map((id) => String(id)) : [];
+      await sqlite.run(
+        db,
+        "INSERT INTO enrollments (user_id, data) VALUES (?, ?)",
+        [String(uid), JSON.stringify(list)]
+      );
+    }
+    await sqlite.run(db, "COMMIT");
+  } catch (e) {
+    await sqlite.run(db, "ROLLBACK").catch(() => {});
+    throw e;
+  }
 }
 
 export function findUserByEmail(users, email) {

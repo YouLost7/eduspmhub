@@ -1,29 +1,54 @@
-import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import {
   parseExternalVideoUrl,
   isValidEmbedObject,
 } from "../src/lib/lessonEmbed.js";
+import { getDb, sqlite } from "./sqlite.js";
 
 export { parseExternalVideoUrl, isValidEmbedObject };
 
-const DIR = dirname(fileURLToPath(import.meta.url));
-const STORE_PATH = join(DIR, "data", "educator-courses.json");
-
 export async function loadEducatorCourses() {
-  try {
-    const raw = await readFile(STORE_PATH, "utf8");
-    const arr = JSON.parse(raw);
-    return Array.isArray(arr) ? arr : [];
-  } catch {
-    return [];
-  }
+  const db = await getDb();
+  const rows = await sqlite.all(
+    db,
+    "SELECT data FROM educator_courses ORDER BY rowid ASC"
+  );
+  return rows
+    .map((r) => {
+      try {
+        return JSON.parse(r.data);
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean);
 }
 
 export async function saveEducatorCourses(list) {
-  await mkdir(dirname(STORE_PATH), { recursive: true });
-  await writeFile(STORE_PATH, JSON.stringify(list, null, 2), "utf8");
+  const db = await getDb();
+  await sqlite.run(db, "BEGIN IMMEDIATE");
+  try {
+    await sqlite.run(db, "DELETE FROM educator_courses");
+    for (const c of list) {
+      if (!c || typeof c !== "object") continue;
+      const id = String(c.id || "").trim();
+      if (!id) continue;
+      await sqlite.run(
+        db,
+        "INSERT INTO educator_courses (id, educator_id, status, updated_at, data) VALUES (?, ?, ?, ?, ?)",
+        [
+          id,
+          String(c.educatorId || ""),
+          String(c.status || ""),
+          String(c.updatedAt || c.createdAt || ""),
+          JSON.stringify(c),
+        ]
+      );
+    }
+    await sqlite.run(db, "COMMIT");
+  } catch (e) {
+    await sqlite.run(db, "ROLLBACK").catch(() => {});
+    throw e;
+  }
 }
 
 /** Same shape as CATALOG rows for browse / enrolment lists */

@@ -19,15 +19,19 @@ Then register and use **Browse**, **My courses**, and **Profile** (requires sign
 ### API highlights
 
 - `GET /api/dashboard/featured` — recommendations (boosts your subject if you are a logged-in student), popular courses sorted by enrolment count, educator strip mixing **verified** registered educators, curated house tutors, and up to two **pending** profiles.
+- Auth and admin endpoints have basic IP rate limits (`/api/auth/register`, `/api/auth/login`, `/api/admin/*`) to reduce brute-force and abuse.
 
 ### Scripts
 
-| Command        | Purpose                          |
-| -------------- | -------------------------------- |
-| `npm run dev:all` | API + Vite (recommended)      |
-| `npm run server`  | API only                        |
-| `npm run dev`     | Vite only (needs API elsewhere) |
-| `npm run build`   | Production frontend → `dist/`   |
+| Command            | Purpose                                   |
+| ------------------ | ----------------------------------------- |
+| `npm run dev:all`  | API + Vite (recommended)                  |
+| `npm run server`   | API only                                  |
+| `npm run dev`      | Vite only (needs API elsewhere)           |
+| `npm run lint`     | ESLint checks for frontend/backend scripts |
+| `npm run test`     | API smoke test (`GET /api/health`)        |
+| `npm run ci`       | Lint + test + build                       |
+| `npm run build`    | Production frontend → `dist/`             |
 
 ## User experience
 
@@ -53,11 +57,25 @@ Other env vars:
 - `PORT` — API port (default `3001`)
 - `SESSION_SECRET` — session signing secret
 - `ADMIN_KEY` — required header for verify endpoint
+- `CORS_ORIGINS` — **production-only** comma-separated allowlist (for example `https://app.example.com,https://admin.example.com`)
+- `DB_PATH` — optional SQLite path (default `server/data/eduspmhub.sqlite`)
 
 ## Data files (gitignored)
 
-- `server/data/users.json` — user accounts (hashed passwords)
-- `server/data/enrollments.json` — per-user course IDs
+- `server/data/eduspmhub.sqlite` — main app database (users, enrolments, educator courses)
+- `sessions` are also stored in SQLite, so login sessions survive API restarts (until cookie expiry).
+- Legacy JSON files (`users.json`, `enrollments.json`, `educator-courses.json`) are imported automatically on first SQLite boot when tables are empty.
+
+## Backend architecture
+
+- `server/index.js` is now the composition root (middleware, shared helpers, route registration).
+- Route modules are split by domain:
+  - `server/routes/authAdminRoutes.js`
+  - `server/routes/profileRoutes.js`
+  - `server/routes/educatorRoutes.js`
+  - `server/routes/courseRoutes.js`
+- Persistence is SQLite-backed via `server/sqlite.js` and data adapters in `server/db.js` and `server/educatorCourses.js`.
+- Session persistence uses `server/sessionStore.js` (SQLite), replacing in-memory session storage.
 
 ## Stack
 
