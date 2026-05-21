@@ -1,3 +1,8 @@
+import {
+  isValidMalaysiaSchool,
+  isValidStudentFormLevel,
+} from "../shared/studentOptions.js";
+
 const FREE = new Set([
   "gmail.com",
   "yahoo.com",
@@ -23,3 +28,5 @@ export function isLikelySchoolEmail(email) {
   if (!domain || FREE.has(domain)) return false;
   return domain.includes("edu") || domain.includes("school");
 }
+
+export { isValidMalaysiaSchool, isValidStudentFormLevel };

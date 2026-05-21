@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { apiJson } from "../api.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import EducatorMyTeaching from "../components/EducatorMyTeaching.jsx";
@@ -11,13 +11,16 @@ function priceToCents(priceLike) {
   const cleaned = raw.replace(/^RM\s*/i, "").replace(/,/g, "");
   const num = Number.parseFloat(cleaned.replace(/[^\d.]/g, ""));
   if (!Number.isFinite(num) || num <= 0) return 0;
-  return Math.round(num * 100);
+  const cents = Math.round(num * 100);
+  return cents < 200 ? 0 : cents;
 }
 
 export default function MyCoursesPage() {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [courses, setCourses] = useState([]);
   const [err, setErr] = useState("");
+  const [okMsg, setOkMsg] = useState("");
   const isEducator = user?.role === "educator";
 
   const load = useCallback(async () => {
@@ -32,6 +35,37 @@ export default function MyCoursesPage() {
   useEffect(() => {
     if (!isEducator) load();
   }, [isEducator, load]);
+
+  useEffect(() => {
+    const paymentStatus = searchParams.get("payment");
+    const sessionId = searchParams.get("session_id");
+    if (isEducator || !user || user.role !== "student") return;
+    if (paymentStatus !== "success" || !sessionId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        await apiJson("/api/payments/confirm-session", {
+          method: "POST",
+          body: { sessionId },
+        });
+        if (!cancelled) {
+          await load();
+          setOkMsg("Payment confirmed and course added to My courses.");
+          const next = new URLSearchParams(searchParams);
+          next.delete("payment");
+          next.delete("session_id");
+          setSearchParams(next, { replace: true });
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setErr(e.message || "Could not confirm your payment yet.");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isEducator, load, searchParams, setSearchParams, user]);
 
   if (isEducator) {
     return (
@@ -76,6 +110,11 @@ export default function MyCoursesPage() {
       {err && (
         <p className="form-error" role="alert">
           {err}
+        </p>
+      )}
+      {okMsg && (
+        <p className="verify-banner" role="status">
+          {okMsg}
         </p>
       )}
 

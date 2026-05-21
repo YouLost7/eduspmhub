@@ -36,16 +36,47 @@ export default function TransactionsPage() {
   async function loadReceipt(paymentId) {
     try {
       const data = await apiJson(`/api/payments/receipt/${encodeURIComponent(paymentId)}`);
+      setErr("");
       setReceiptDetails((prev) => ({
         ...prev,
         [paymentId]: data.receipt || null,
       }));
+      return data.receipt || null;
     } catch {
+      setErr("Could not load receipt details for this transaction.");
       setReceiptDetails((prev) => ({
         ...prev,
         [paymentId]: null,
       }));
+      return null;
     }
+  }
+
+  async function openReceipt(row) {
+    const fresh = await loadReceipt(row.id);
+    const url = String(fresh?.receiptUrl || row?.receiptUrl || "").trim();
+    if (url) {
+      window.open(url, "_blank", "noopener,noreferrer");
+      return;
+    }
+    if (String(row.provider || "").toLowerCase() === "mock") {
+      setErr("Mock payments do not have an external Stripe receipt. Use Receipt details instead.");
+      return;
+    }
+    setErr("Receipt link is not ready yet. Please try again in a moment.");
+  }
+
+  function downloadReceiptPdf(row) {
+    const paymentId = encodeURIComponent(String(row?.id || "").trim());
+    if (!paymentId) {
+      setErr("Missing transaction ID for PDF receipt.");
+      return;
+    }
+    window.open(
+      `/api/payments/receipt/${paymentId}/pdf`,
+      "_blank",
+      "noopener,noreferrer"
+    );
   }
 
   return (
@@ -85,21 +116,33 @@ export default function TransactionsPage() {
                 >
                   Receipt details
                 </button>
-                {row.receiptUrl ? (
-                  <a
-                    className="solid-btn"
-                    href={row.receiptUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    Open receipt
-                  </a>
-                ) : null}
+                <button
+                  type="button"
+                  className="solid-btn"
+                  onClick={() => openReceipt(row)}
+                >
+                  Open receipt
+                </button>
               </div>
               {receiptDetails[row.id] ? (
-                <p className="field-hint" style={{ marginTop: "0.5rem" }}>
-                  Transaction ID: {receiptDetails[row.id].id}
-                </p>
+                <div className="field-hint" style={{ marginTop: "0.5rem" }}>
+                  <p>Transaction ID: {receiptDetails[row.id].id}</p>
+                  <p>Provider: {String(receiptDetails[row.id].provider || "stripe").toUpperCase()}</p>
+                  <p>Method: {receiptDetails[row.id].paymentMethodType || "n/a"}</p>
+                  <p>
+                    Receipt link:{" "}
+                    {receiptDetails[row.id].receiptUrl ? "Available" : "Not provided by provider yet"}
+                  </p>
+                  <div style={{ marginTop: "0.5rem" }}>
+                    <button
+                      type="button"
+                      className="outline-btn"
+                      onClick={() => downloadReceiptPdf(row)}
+                    >
+                      Download PDF
+                    </button>
+                  </div>
+                </div>
               ) : null}
             </article>
           ))}

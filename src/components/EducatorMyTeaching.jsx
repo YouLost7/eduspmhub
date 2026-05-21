@@ -110,6 +110,7 @@ export default function EducatorMyTeaching() {
   const [eDesc, setEDesc] = useState("");
   const [eThumb, setEThumb] = useState("");
   const [eLessonPages, setELessonPages] = useState([]);
+  const [openLessonIndex, setOpenLessonIndex] = useState(0);
   const [mediaBusy, setMediaBusy] = useState("");
 
   const load = useCallback(async () => {
@@ -127,6 +128,13 @@ export default function EducatorMyTeaching() {
     load();
   }, [load]);
 
+  useEffect(() => {
+    const maxIdx = Math.max(0, clampLessonCount(eLessons) - 1);
+    if (openLessonIndex > maxIdx) {
+      setOpenLessonIndex(maxIdx);
+    }
+  }, [eLessons, openLessonIndex]);
+
   function openEdit(c) {
     setEditId(c.id);
     setETitle(c.title);
@@ -136,6 +144,7 @@ export default function EducatorMyTeaching() {
     setEDesc(c.description || "");
     setEThumb(c.thumb || "");
     setELessonPages(lessonPagesToEditState(c));
+    setOpenLessonIndex(0);
     setErr("");
     setMsg("");
   }
@@ -143,6 +152,7 @@ export default function EducatorMyTeaching() {
   function closeEdit() {
     setEditId(null);
     setELessonPages([]);
+    setOpenLessonIndex(0);
   }
 
   async function createCourse(e) {
@@ -537,6 +547,7 @@ export default function EducatorMyTeaching() {
                 onChange={(e) => setNPrice(e.target.value)}
                 placeholder="e.g. 35 or 35.00"
               />
+              <p className="field-hint">Minimum paid price is RM2.00. Lower values are saved as free.</p>
             </div>
             <div className="field">
               <label htmlFor="ec-lessons">Lessons</label>
@@ -686,21 +697,25 @@ export default function EducatorMyTeaching() {
                       <ul className="educator-enroll-list">
                         {students.map((s) => (
                           <li key={s.id}>
-                            <strong>{s.fullName || "Student"}</strong>
-                            <div className="educator-enroll-meta">
-                              <span>{s.email}</span>
-                              {(s.schoolName || s.studentForm || s.studentSubject) && (
-                                <span>
-                                  {[
-                                    s.schoolName,
-                                    s.studentForm,
-                                    s.studentSubject,
-                                  ]
-                                    .filter(Boolean)
-                                    .join(" · ")}
-                                </span>
-                              )}
+                            <div className="educator-enroll-row-head">
+                              <strong>{s.fullName || "Student"}</strong>
+                              {s.email ? (
+                                <a href={`mailto:${s.email}`} className="educator-enroll-email">
+                                  {s.email}
+                                </a>
+                              ) : null}
                             </div>
+                            {(s.schoolName || s.studentForm || s.studentSubject) && (
+                              <div className="educator-enroll-tags">
+                                {[s.schoolName, s.studentForm, s.studentSubject]
+                                  .filter(Boolean)
+                                  .map((part) => (
+                                    <span key={`${s.id}-${part}`} className="educator-enroll-tag">
+                                      {part}
+                                    </span>
+                                  ))}
+                              </div>
+                            )}
                           </li>
                         ))}
                       </ul>
@@ -731,6 +746,9 @@ export default function EducatorMyTeaching() {
                           value={ePrice}
                           onChange={(e) => setEPrice(e.target.value)}
                         />
+                        <p className="field-hint">
+                          Minimum paid price is RM2.00. Lower values are saved as free.
+                        </p>
                       </div>
                       <div className="field">
                         <label>Lessons</label>
@@ -777,10 +795,27 @@ export default function EducatorMyTeaching() {
                         ...(eLessonPages[i] || {}),
                       };
                       const mediaKeyBusy = `${c.id}:${i}`;
+                      const hasAnyMedia = p.hasPdf || p.hasVideo || p.hasExternalVideo;
+                      const lessonLabel = (p.title || `Lesson ${i + 1}`).trim() || `Lesson ${i + 1}`;
                       return (
-                        <fieldset key={i} className="lesson-edit-fieldset">
-                          <legend>Lesson {i + 1}</legend>
-                          <div className="field">
+                        <details
+                          key={i}
+                          className="lesson-edit-fieldset"
+                          open={openLessonIndex === i}
+                          onToggle={(e) => {
+                            if (e.currentTarget.open) setOpenLessonIndex(i);
+                            else if (openLessonIndex === i) setOpenLessonIndex(-1);
+                          }}
+                        >
+                          <summary className="lesson-edit-summary">
+                            <span className="lesson-edit-summary-title">
+                              Lesson {i + 1}: {lessonLabel}
+                            </span>
+                            <span className="lesson-edit-summary-meta">
+                              {hasAnyMedia ? "Media attached" : "No media"}
+                            </span>
+                          </summary>
+                          <div className="field lesson-edit-content">
                             <label htmlFor={`ec-lesson-title-${i}`}>Title</label>
                             <input
                               id={`ec-lesson-title-${i}`}
@@ -962,7 +997,7 @@ export default function EducatorMyTeaching() {
                               </div>
                             )}
                           </div>
-                        </fieldset>
+                        </details>
                       );
                     })}
                     <div className="educator-edit-actions">

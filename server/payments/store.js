@@ -1,12 +1,15 @@
 import { getDb, sqlite } from "../sqlite.js";
 
+const MIN_PAID_PRICE_CENTS = 200;
+
 export function priceToCents(priceLike) {
   const raw = String(priceLike ?? "").trim();
   if (!raw) return 0;
   const cleaned = raw.replace(/^RM\s*/i, "").replace(/,/g, "");
   const num = Number.parseFloat(cleaned.replace(/[^\d.]/g, ""));
   if (!Number.isFinite(num) || num <= 0) return 0;
-  return Math.round(num * 100);
+  const cents = Math.round(num * 100);
+  return cents < MIN_PAID_PRICE_CENTS ? 0 : cents;
 }
 
 export function isPaidPrice(priceLike) {

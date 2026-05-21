@@ -12,6 +12,8 @@ export function registerAuthAdminRoutes(app, deps) {
     findUserById,
     toPublicUser,
     isLikelySchoolEmail,
+    isValidMalaysiaSchool,
+    isValidStudentFormLevel,
     bcrypt,
     randomUUID,
     existsSync,
@@ -64,6 +66,16 @@ export function registerAuthAdminRoutes(app, deps) {
         }
         if (!schoolName || !String(schoolName).trim()) {
           return res.status(400).json({ error: "School name is required" });
+        }
+        if (!isValidMalaysiaSchool(schoolName)) {
+          return res.status(400).json({
+            error: "Please choose a school from the list of supported Malaysian schools.",
+          });
+        }
+        if (!isValidStudentFormLevel(studentForm)) {
+          return res.status(400).json({
+            error: "Please choose a valid Form / Level option from the list.",
+          });
         }
         if (!isLikelySchoolEmail(String(email))) {
           return res.status(400).json({

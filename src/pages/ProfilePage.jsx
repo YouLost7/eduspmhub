@@ -3,6 +3,14 @@ import { motion } from "framer-motion";
 import { friendlyNonJsonApiMessage, apiJson } from "../api.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { profilePhotoSrc } from "../lib/profilePhoto.js";
+import { MALAYSIA_SCHOOLS, STUDENT_FORM_LEVELS } from "../../shared/studentOptions.js";
+
+function withLegacyOption(options, currentValue) {
+  const v = String(currentValue || "").trim();
+  if (!v) return options;
+  if (options.includes(v)) return options;
+  return [v, ...options];
+}
 
 export default function ProfilePage() {
   const { user, updateProfile, refreshMe } = useAuth();
@@ -24,6 +32,8 @@ export default function ProfilePage() {
   const photoInputRef = useRef(null);
 
   const isEducator = user?.role === "educator";
+  const schoolOptions = withLegacyOption(MALAYSIA_SCHOOLS, schoolName);
+  const formLevelOptions = withLegacyOption(STUDENT_FORM_LEVELS, studentForm);
 
   useEffect(() => {
     if (!user) return;
@@ -327,20 +337,33 @@ export default function ProfilePage() {
           <>
             <div className="field">
               <label htmlFor="pf-school">School</label>
-              <input
+              <select
                 id="pf-school"
                 value={schoolName}
                 onChange={(e) => setSchoolName(e.target.value)}
-              />
+              >
+                <option value="">Choose your school</option>
+                {schoolOptions.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="field">
               <label htmlFor="pf-form">Form / level</label>
-              <input
+              <select
                 id="pf-form"
                 value={studentForm}
                 onChange={(e) => setStudentForm(e.target.value)}
-                placeholder="e.g. Form 5"
-              />
+              >
+                <option value="">Select your level (optional)</option>
+                {formLevelOptions.map((level) => (
+                  <option key={level} value={level}>
+                    {level}
+                  </option>
+                ))}
+              </select>
             </div>
             <p className="field-hint">Main subject on file: {user?.studentSubject}</p>
           </>

@@ -24,6 +24,16 @@ const cardVariants = {
   },
 };
 
+const REASON_ICONS = {
+  peer_school: "👥",
+  subject_strong: "🎯",
+  subject_related: "📚",
+  educator_affinity: "👩‍🏫",
+  trending: "🔥",
+  explore: "🧭",
+  activity: "✨",
+};
+
 export default function DashboardPage() {
   const { user, loading, logout } = useAuth();
   const navigate = useNavigate();
@@ -295,6 +305,12 @@ export default function DashboardPage() {
                         <div className={`thumb ${c.thumb || ""}`.trim()} />
                         <h3>{c.title}</h3>
                         <p>{c.meta}</p>
+                        {c.recommendationReason ? (
+                          <p className="field-hint" style={{ marginTop: "0.2rem", marginBottom: "0.35rem" }}>
+                            Why this pick: {REASON_ICONS[c.recommendationReasonKey] || "✨"}{" "}
+                            {c.recommendationReason}
+                          </p>
+                        ) : null}
                         <span>{c.price}</span>
                       </Link>
                       <div className="course-card-actions">

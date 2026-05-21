@@ -11,7 +11,8 @@ function priceToCents(priceLike) {
   const cleaned = raw.replace(/^RM\s*/i, "").replace(/,/g, "");
   const num = Number.parseFloat(cleaned.replace(/[^\d.]/g, ""));
   if (!Number.isFinite(num) || num <= 0) return 0;
-  return Math.round(num * 100);
+  const cents = Math.round(num * 100);
+  return cents < 200 ? 0 : cents;
 }
 
 export default function BrowsePage() {
@@ -238,6 +239,12 @@ export default function BrowsePage() {
           {staleApiHint}
         </p>
       )}
+      {import.meta.env.DEV && user?.role === "student" && (
+        <p className="verify-banner" role="status">
+          Dev payment mode: if Stripe keys are not configured, paid courses use a local mock
+          checkout and still grant access for testing.
+        </p>
+      )}
       {err && (
         <p className="form-error" role="alert">
           {err}
@@ -277,20 +284,28 @@ export default function BrowsePage() {
           >
             <Link
               to={`/browse?course=${encodeURIComponent(c.id)}`}
-              style={{ textDecoration: "none", color: "inherit" }}
+              aria-label={`Open details for ${c.title}`}
+              style={{ display: "block" }}
             >
               <div className={`thumb ${c.thumb || ""}`.trim()} />
-              <h3>{c.title}</h3>
-              <p>
-                {c.source === "educator" && c.educatorId ? (
-                  <Link to={`/tutor/${encodeURIComponent(c.educatorId)}`}>{c.educator}</Link>
-                ) : (
-                  c.educator
-                )}{" "}
-                • {c.lessons} lessons • {c.subject}
-              </p>
-              <span>{c.price}</span>
             </Link>
+            <h3>
+              <Link
+                to={`/browse?course=${encodeURIComponent(c.id)}`}
+                style={{ textDecoration: "none", color: "inherit" }}
+              >
+                {c.title}
+              </Link>
+            </h3>
+            <p>
+              {c.source === "educator" && c.educatorId ? (
+                <Link to={`/tutor/${encodeURIComponent(c.educatorId)}`}>{c.educator}</Link>
+              ) : (
+                c.educator
+              )}{" "}
+              • {c.lessons} lessons • {c.subject}
+            </p>
+            <span>{c.price}</span>
             <div className="course-card-actions">
               <Link
                 className="outline-btn"

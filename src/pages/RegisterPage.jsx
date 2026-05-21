@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { isLikelySchoolEmail } from "../utils/emailValidation.js";
 import { useAuth } from "../context/AuthContext.jsx";
+import { MALAYSIA_SCHOOLS, STUDENT_FORM_LEVELS } from "../../shared/studentOptions.js";
 
 const SUBJECTS = [
   ["", "Choose one subject"],
@@ -66,7 +67,7 @@ export default function RegisterPage() {
     }
 
     if (role === "student" && !schoolName.trim()) {
-      setStatus({ text: "Please enter your school name.", color: "#b91c1c" });
+      setStatus({ text: "Please select your school.", color: "#b91c1c" });
       return;
     }
 
@@ -370,18 +371,20 @@ export default function RegisterPage() {
                 >
                   <div className="field">
                     <label htmlFor="schoolName">School Name</label>
-                    <div className="input-wrap">
-                      <input
-                        id="schoolName"
-                        name="schoolName"
-                        value={schoolName}
-                        onChange={(e) => setSchoolName(e.target.value)}
-                        type="text"
-                        placeholder="Your school name"
-                        autoComplete="organization"
-                        required
-                      />
-                    </div>
+                    <select
+                      id="schoolName"
+                      name="schoolName"
+                      value={schoolName}
+                      onChange={(e) => setSchoolName(e.target.value)}
+                      required
+                    >
+                      <option value="">Choose your school</option>
+                      {MALAYSIA_SCHOOLS.map((name) => (
+                        <option key={name} value={name}>
+                          {name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <div className="field">
                     <label htmlFor="studentForm">Form / Level</label>
@@ -391,10 +394,12 @@ export default function RegisterPage() {
                       value={studentForm}
                       onChange={(e) => setStudentForm(e.target.value)}
                     >
-                      <option value="">Select (optional)</option>
-                      <option value="Form 4">Form 4</option>
-                      <option value="Form 5">Form 5</option>
-                      <option value="Other">Other</option>
+                      <option value="">Select your level (optional)</option>
+                      {STUDENT_FORM_LEVELS.map((level) => (
+                        <option key={level} value={level}>
+                          {level}
+                        </option>
+                      ))}
                     </select>
                   </div>
                   <div className="field">

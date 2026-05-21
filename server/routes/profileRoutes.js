@@ -17,6 +17,8 @@ export function registerProfileRoutes(app, deps) {
     unlinkAvatarFile,
     PROFILE_PHOTO_DIR,
     existsSync,
+    isValidMalaysiaSchool,
+    isValidStudentFormLevel,
   } = deps;
 
   app.patch("/api/profile", requireAuth, async (req, res) => {
@@ -29,8 +31,27 @@ export function registerProfileRoutes(app, deps) {
 
       if (fullName != null) u.fullName = String(fullName).trim();
       if (u.role === "student") {
-        if (schoolName != null) u.schoolName = String(schoolName).trim();
-        if (studentForm != null) u.studentForm = String(studentForm);
+        if (schoolName != null) {
+          const school = String(schoolName).trim();
+          if (!school) {
+            return res.status(400).json({ error: "School name is required" });
+          }
+          if (!isValidMalaysiaSchool(school)) {
+            return res.status(400).json({
+              error: "Please choose a school from the list of supported Malaysian schools.",
+            });
+          }
+          u.schoolName = school;
+        }
+        if (studentForm != null) {
+          const level = String(studentForm || "").trim();
+          if (!isValidStudentFormLevel(level)) {
+            return res.status(400).json({
+              error: "Please choose a valid Form / Level option from the list.",
+            });
+          }
+          u.studentForm = level;
+        }
       }
       if (u.role === "educator") {
         if (educatorInstitution != null) {

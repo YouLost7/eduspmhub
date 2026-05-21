@@ -207,13 +207,14 @@ export function mapToManagedRow(course, educatorFullName) {
 export function normalizePrice(input) {
   const s = String(input ?? "").trim();
   if (!s) return "RM0.00";
+  const MIN_PAID_PRICE = 2;
   if (/^RM\s*/i.test(s)) {
     const n = s.replace(/^RM\s*/i, "").trim();
     const num = Number.parseFloat(n);
-    if (!Number.isFinite(num)) return "RM0.00";
+    if (!Number.isFinite(num) || num < MIN_PAID_PRICE) return "RM0.00";
     return `RM${num.toFixed(2)}`;
   }
   const num = Number.parseFloat(s.replace(/[^\d.]/g, ""));
-  if (!Number.isFinite(num)) return "RM0.00";
+  if (!Number.isFinite(num) || num < MIN_PAID_PRICE) return "RM0.00";
   return `RM${num.toFixed(2)}`;
 }

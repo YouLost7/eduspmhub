@@ -21,7 +21,11 @@ import {
   toPublicTutorProfile,
 } from "./db.js";
 import { CATALOG } from "./catalog.js";
-import { isLikelySchoolEmail } from "./validation.js";
+import {
+  isLikelySchoolEmail,
+  isValidMalaysiaSchool,
+  isValidStudentFormLevel,
+} from "./validation.js";
 import { buildFeaturedPayload } from "./featured.js";
 import {
   loadEducatorCourses,
@@ -676,7 +680,8 @@ app.get("/api/health", (_req, res) => {
 
 app.get("/api/dashboard/featured", async (req, res) => {
   try {
-    const data = await buildFeaturedPayload(req.session?.userId);
+    const includeDebug = !IS_PROD && String(req.query.debug || "").trim() === "1";
+    const data = await buildFeaturedPayload(req.session?.userId, { includeDebug });
     res.json(data);
   } catch (e) {
     console.error(e);
@@ -697,6 +702,8 @@ const authAdminDeps = {
   findUserById,
   toPublicUser,
   isLikelySchoolEmail,
+  isValidMalaysiaSchool,
+  isValidStudentFormLevel,
   bcrypt,
   randomUUID,
   existsSync,
@@ -721,6 +728,8 @@ const profileDeps = {
   unlinkAvatarFile,
   PROFILE_PHOTO_DIR,
   existsSync,
+  isValidMalaysiaSchool,
+  isValidStudentFormLevel,
 };
 
 const educatorDeps = {
