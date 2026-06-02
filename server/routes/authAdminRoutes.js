@@ -1,3 +1,5 @@
+import { getAdminFinanceSummary } from "../admin/finance.js";
+
 export function registerAuthAdminRoutes(app, deps) {
   const {
     registerLimiter,
@@ -230,5 +232,19 @@ export function registerAuthAdminRoutes(app, deps) {
     u.verified = true;
     await saveUsers(users);
     res.json({ ok: true, user: toPublicUser(u) });
+  });
+
+  app.get("/api/admin/finance-summary", adminLimiter, async (req, res) => {
+    const key = req.get("x-admin-key");
+    if (!key || key !== ADMIN_KEY) {
+      return res.status(401).json({ error: "Invalid admin key" });
+    }
+    try {
+      const summary = await getAdminFinanceSummary();
+      res.json({ summary });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: "Could not load finance summary" });
+    }
   });
 }

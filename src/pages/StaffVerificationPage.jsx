@@ -22,6 +22,8 @@ export default function StaffVerificationPage() {
   const [mpBusyId, setMpBusyId] = useState("");
   const [withdrawals, setWithdrawals] = useState([]);
   const [wdBusyId, setWdBusyId] = useState("");
+  const [finance, setFinance] = useState(null);
+  const [financeErr, setFinanceErr] = useState("");
 
   useEffect(() => {
     try {
@@ -76,6 +78,30 @@ export default function StaffVerificationPage() {
     }
   }, [adminKey]);
 
+  const fetchFinance = useCallback(async () => {
+    if (!adminKey.trim()) {
+      setFinance(null);
+      return;
+    }
+    setFinanceErr("");
+    try {
+      const res = await fetch("/api/admin/finance-summary", {
+        credentials: "include",
+        headers: { "X-Admin-Key": adminKey.trim() },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setFinance(null);
+        setFinanceErr(data.error || `Finance summary failed (${res.status})`);
+        return;
+      }
+      setFinance(data.summary || null);
+    } catch {
+      setFinance(null);
+      setFinanceErr("Could not load finance summary.");
+    }
+  }, [adminKey]);
+
   const fetchPending = useCallback(async () => {
     setLoadErr("");
     setBanner({ text: "", ok: true });
@@ -111,7 +137,8 @@ export default function StaffVerificationPage() {
     fetchPending();
     fetchMarketplaceReports();
     fetchWithdrawals();
-  }, [hydrated, adminKey, fetchPending, fetchMarketplaceReports, fetchWithdrawals]);
+    fetchFinance();
+  }, [hydrated, adminKey, fetchPending, fetchMarketplaceReports, fetchWithdrawals, fetchFinance]);
 
   function saveKey() {
     const k = keyInput.trim();
@@ -338,6 +365,7 @@ export default function StaffVerificationPage() {
               fetchPending();
               fetchMarketplaceReports();
               fetchWithdrawals();
+              fetchFinance();
             }}
           >
             Refresh queue
@@ -354,6 +382,110 @@ export default function StaffVerificationPage() {
           </p>
         )}
       </section>
+
+      {adminKey.trim() ? (
+        <section className="staff-card section-block">
+          <h2>Platform finances</h2>
+          <p className="field-hint">
+            Money collected in Stripe vs seller wallet liabilities and estimated platform share.
+            Does not include Stripe processing fees.
+          </p>
+          {financeErr && (
+            <p className="form-error" role="alert">
+              {financeErr}
+            </p>
+          )}
+          {finance ? (
+            <>
+              <div className="staff-finance-grid">
+                <article className="staff-finance-stat">
+                  <h3>Stripe collected</h3>
+                  <p className="staff-finance-value">{finance.stripeCollected?.label}</p>
+                  <p className="field-hint">{finance.stripeCollected?.count} paid charge(s)</p>
+                </article>
+                <article className="staff-finance-stat">
+                  <h3>Refunded</h3>
+                  <p className="staff-finance-value">{finance.refunded?.label}</p>
+                  <p className="field-hint">{finance.refunded?.count} refund(s)</p>
+                </article>
+                <article className="staff-finance-stat">
+                  <h3>Net Stripe in</h3>
+                  <p className="staff-finance-value">{finance.netStripeIn?.label}</p>
+                  <p className="field-hint">Paid minus refunded</p>
+                </article>
+                <article className="staff-finance-stat staff-finance-stat--warn">
+                  <h3>Wallet liability</h3>
+                  <p className="staff-finance-value">{finance.wallet?.totalLiability?.label}</p>
+                  <p className="field-hint">
+                    Available {finance.wallet?.available?.label} + pending withdrawals{" "}
+                    {finance.wallet?.pendingWithdrawals?.label} (
+                    {finance.wallet?.pendingWithdrawals?.count})
+                  </p>
+                </article>
+                <article className="staff-finance-stat staff-finance-stat--ok">
+                  <h3>Platform fees (ledger)</h3>
+                  <p className="staff-finance-value">{finance.platform?.feesFromLedger?.label}</p>
+                  <p className="field-hint">{finance.platform?.feePercent}% on credited earnings</p>
+                </article>
+                <article className="staff-finance-stat staff-finance-stat--ok">
+                  <h3>Est. cash retained</h3>
+                  <p className="staff-finance-value">
+                    {finance.platform?.estimatedCashRetained?.label}
+                  </p>
+                  <p className="field-hint">Net Stripe − liability − paid out</p>
+                </article>
+              </div>
+
+              <h3 style={{ marginTop: "1.25rem" }}>By product (paid)</h3>
+              <ul className="staff-finance-breakdown">
+                <li>
+                  Courses: {finance.byProduct?.courses?.label} ({finance.byProduct?.courses?.count})
+                </li>
+                <li>
+                  1-on-1 tutoring: {finance.byProduct?.tutoring?.label} (
+                  {finance.byProduct?.tutoring?.count})
+                </li>
+                <li>
+                  Marketplace: {finance.byProduct?.marketplace?.label} (
+                  {finance.byProduct?.marketplace?.count})
+                </li>
+              </ul>
+
+              <h3 style={{ marginTop: "1rem" }}>Payouts & tutoring</h3>
+              <ul className="staff-finance-breakdown">
+                <li>
+                  Paid out to sellers: {finance.wallet?.paidOut?.label} (
+                  {finance.wallet?.paidOut?.count} withdrawal(s))
+                </li>
+                <li>
+                  Lifetime credited to wallets: {finance.wallet?.lifetimeCredited?.label}
+                </li>
+                <li>
+                  Tutoring awaiting completion: {finance.tutoring?.awaitingCompletion?.label} (
+                  {finance.tutoring?.awaitingCompletion?.count} session(s) — ~{" "}
+                  {finance.tutoring?.futureLiabilityEstimate?.label} future tutor liability)
+                </li>
+                {finance.mockCollected?.count > 0 ? (
+                  <li>Mock/dev payments: {finance.mockCollected?.label}</li>
+                ) : null}
+              </ul>
+
+              {finance.notes?.length > 0 ? (
+                <details className="staff-finance-notes">
+                  <summary>How these numbers relate</summary>
+                  <ul>
+                    {finance.notes.map((n) => (
+                      <li key={n}>{n}</li>
+                    ))}
+                  </ul>
+                </details>
+              ) : null}
+            </>
+          ) : (
+            !financeErr && <p className="field-hint">Loading finance summary…</p>
+          )}
+        </section>
+      ) : null}
 
       <section className="staff-card section-block">
         <h2>Pending educators ({pending.length})</h2>
