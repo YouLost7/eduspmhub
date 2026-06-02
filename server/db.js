@@ -111,6 +111,14 @@ export function toPublicUser(user) {
       Number(user.hourlyRateCents) > 0
         ? `RM${(Number(user.hourlyRateCents) / 100).toFixed(2)}/hr`
         : "",
+    hasPayoutBankDetails: Boolean(
+      user.payoutBankName && user.payoutAccountHolder && user.payoutAccountNumber
+    ),
+    payoutBankName: user.payoutBankName || "",
+    payoutAccountHolder: user.payoutAccountHolder || "",
+    payoutAccountNumberLast4: user.payoutAccountNumber
+      ? String(user.payoutAccountNumber).slice(-4)
+      : "",
   };
 }
 

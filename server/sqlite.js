@@ -310,6 +310,40 @@ async function ensureDb() {
       updated_at TEXT NOT NULL
     )`
   );
+  await client.query(
+    `CREATE TABLE IF NOT EXISTS seller_balances (
+      user_id TEXT PRIMARY KEY,
+      available_cents INTEGER NOT NULL DEFAULT 0,
+      lifetime_earned_cents INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL
+    )`
+  );
+  await client.query(
+    `CREATE TABLE IF NOT EXISTS balance_transactions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      amount_cents INTEGER NOT NULL,
+      reference_type TEXT NOT NULL DEFAULT '',
+      reference_id TEXT NOT NULL DEFAULT '',
+      description TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL
+    )`
+  );
+  await client.query(
+    `CREATE TABLE IF NOT EXISTS withdrawal_requests (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      amount_cents INTEGER NOT NULL,
+      status TEXT NOT NULL,
+      bank_name TEXT NOT NULL DEFAULT '',
+      account_holder TEXT NOT NULL DEFAULT '',
+      account_number TEXT NOT NULL DEFAULT '',
+      admin_note TEXT NOT NULL DEFAULT '',
+      requested_at TEXT NOT NULL,
+      processed_at TEXT
+    )`
+  );
   await client.query("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)");
   await client.query(
     "CREATE INDEX IF NOT EXISTS idx_educator_courses_owner ON educator_courses(educator_id)"
@@ -362,6 +396,18 @@ async function ensureDb() {
   );
   await client.query(
     "CREATE INDEX IF NOT EXISTS idx_marketplace_reports_status ON marketplace_reports(status)"
+  );
+  await client.query(
+    "CREATE INDEX IF NOT EXISTS idx_balance_tx_user ON balance_transactions(user_id)"
+  );
+  await client.query(
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_balance_tx_sale_order ON balance_transactions(reference_type, reference_id, type)"
+  );
+  await client.query(
+    "CREATE INDEX IF NOT EXISTS idx_withdrawals_user ON withdrawal_requests(user_id)"
+  );
+  await client.query(
+    "CREATE INDEX IF NOT EXISTS idx_withdrawals_status ON withdrawal_requests(status)"
   );
 
   await migrateLegacyJsonIfNeeded(client);

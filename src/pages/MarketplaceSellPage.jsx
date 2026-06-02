@@ -25,7 +25,7 @@ function statusBadge(status) {
 
 export default function MarketplaceSellPage() {
   const { user } = useAuth();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const editId = searchParams.get("edit");
   const tabParam = searchParams.get("tab");
   const [tab, setTab] = useState(tabParam === "payouts" || tabParam === "listings" ? tabParam : "create");
@@ -33,7 +33,12 @@ export default function MarketplaceSellPage() {
   const [meta, setMeta] = useState(null);
   const [listing, setListing] = useState(null);
   const [myListings, setMyListings] = useState([]);
-  const [connect, setConnect] = useState(null);
+  const [balance, setBalance] = useState(null);
+  const [payoutBank, setPayoutBank] = useState({ bankName: "", accountHolder: "", accountNumber: "" });
+  const [bankForm, setBankForm] = useState({ bankName: "", accountHolder: "", accountNumber: "" });
+  const [transactions, setTransactions] = useState([]);
+  const [withdrawals, setWithdrawals] = useState([]);
+  const [withdrawAmount, setWithdrawAmount] = useState("");
   const [form, setForm] = useState(EMPTY);
   const [err, setErr] = useState("");
   const [okMsg, setOkMsg] = useState("");
@@ -49,13 +54,21 @@ export default function MarketplaceSellPage() {
     setMyListings(Array.isArray(data.listings) ? data.listings : []);
   }, []);
 
-  const loadConnect = useCallback(async () => {
-    try {
-      const data = await apiJson("/api/marketplace/connect/status");
-      setConnect(data.connect || null);
-    } catch {
-      setConnect(null);
-    }
+  const loadWallet = useCallback(async () => {
+    const [balData, txData, wdData] = await Promise.all([
+      apiJson("/api/marketplace/balance"),
+      apiJson("/api/marketplace/balance/transactions"),
+      apiJson("/api/marketplace/withdrawals"),
+    ]);
+    setBalance(balData.balance || null);
+    setPayoutBank(balData.payoutBank || {});
+    setBankForm({
+      bankName: balData.payoutBank?.bankName || "",
+      accountHolder: balData.payoutBank?.accountHolder || "",
+      accountNumber: "",
+    });
+    setTransactions(Array.isArray(txData.transactions) ? txData.transactions : []);
+    setWithdrawals(Array.isArray(wdData.withdrawals) ? wdData.withdrawals : []);
   }, []);
 
   const loadListing = useCallback(async () => {
@@ -81,32 +94,16 @@ export default function MarketplaceSellPage() {
 
   useEffect(() => {
     loadMeta().catch(() => {});
-    loadConnect().catch(() => {});
-  }, [loadMeta, loadConnect]);
+  }, [loadMeta]);
 
   useEffect(() => {
     if (tab === "listings") loadMyListings().catch((e) => setErr(e.message));
-  }, [tab, loadMyListings]);
+    if (tab === "payouts") loadWallet().catch((e) => setErr(e.message));
+  }, [tab, loadMyListings, loadWallet]);
 
   useEffect(() => {
     loadListing().catch((e) => setErr(e.message));
   }, [loadListing]);
-
-  useEffect(() => {
-    const c = searchParams.get("connect");
-    if (c === "done" || c === "refresh") {
-      loadConnect().then(() => {
-        setOkMsg(
-          c === "done"
-            ? "Stripe setup updated. Refresh status below."
-            : "Continue Stripe setup if prompted."
-        );
-      });
-      const next = new URLSearchParams(searchParams);
-      next.delete("connect");
-      setSearchParams(next, { replace: true });
-    }
-  }, [searchParams, setSearchParams, loadConnect]);
 
   function setField(key, value) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -187,19 +184,38 @@ export default function MarketplaceSellPage() {
     }
   }
 
-  async function startPayoutSetup() {
+  async function saveBankDetails() {
     setBusy(true);
     setErr("");
     try {
-      const data = await apiJson("/api/marketplace/connect/onboard", { method: "POST" });
-      if (data.url) {
-        window.location.assign(data.url);
-        return;
-      }
-      if (data.alreadyReady) {
-        setOkMsg("Payout account is already active.");
-        setConnect(data.connect);
-      }
+      await apiJson("/api/profile", {
+        method: "PATCH",
+        body: {
+          payoutBankName: bankForm.bankName,
+          payoutAccountHolder: bankForm.accountHolder,
+          payoutAccountNumber: bankForm.accountNumber,
+        },
+      });
+      setOkMsg("Bank details saved.");
+      await loadWallet();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function requestWithdrawal() {
+    setBusy(true);
+    setErr("");
+    try {
+      await apiJson("/api/marketplace/withdrawals", {
+        method: "POST",
+        body: { amount: withdrawAmount },
+      });
+      setOkMsg("Withdrawal requested. Staff will transfer to your bank soon.");
+      setWithdrawAmount("");
+      await loadWallet();
     } catch (e) {
       setErr(e.message);
     } finally {
@@ -350,31 +366,121 @@ export default function MarketplaceSellPage() {
       )}
 
       {tab === "payouts" && (
-        <section className="section-block">
-          <h2 style={{ marginTop: 0 }}>Stripe seller payouts</h2>
+        <section className="section-block marketplace-wallet">
+          <h2 style={{ marginTop: 0 }}>Seller wallet</h2>
           <p className="field-hint">
-            Connect Stripe to receive marketplace sales directly. EduSPM Hub keeps a{" "}
-            {feePct}% platform fee; the rest goes to your bank via Stripe.
+            Sales credit here after payment ({feePct}% platform fee deducted). Withdraw to your
+            bank when you reach {balance?.minWithdrawalLabel || "RM20.00"}.
           </p>
-          {!connect?.connected && (
+          {balance && (
+            <div className="marketplace-wallet-balance">
+              <p className="marketplace-card-price" style={{ margin: 0 }}>
+                {balance.availableLabel}
+              </p>
+              <p className="field-hint" style={{ margin: "0.25rem 0 0" }}>
+                Available · Lifetime earned {balance.lifetimeEarnedLabel}
+              </p>
+            </div>
+          )}
+
+          <h3>Bank details</h3>
+          {payoutBank.hasDetails && !bankForm.accountNumber && (
             <p className="field-hint">
-              Without payout setup, sales still work but funds stay on the platform account until
-              manual settlement.
+              On file: {payoutBank.bankName} · {payoutBank.accountHolder} · ****
+              {payoutBank.accountNumberLast4}
             </p>
           )}
-          {connect?.ready ? (
-            <p className="form-ok">Payout account active — you will receive transfers for new sales.</p>
-          ) : connect?.connected ? (
-            <p className="field-hint">Account created — finish Stripe onboarding to enable payouts.</p>
-          ) : null}
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={busy}
-            onClick={startPayoutSetup}
-          >
-            {connect?.ready ? "Update payout details" : "Set up payouts with Stripe"}
-          </button>
+          <div className="marketplace-sell-form">
+            <label>
+              Bank name
+              <input
+                className="input"
+                value={bankForm.bankName}
+                onChange={(e) => setBankForm((f) => ({ ...f, bankName: e.target.value }))}
+                placeholder="Maybank"
+              />
+            </label>
+            <label>
+              Account holder name
+              <input
+                className="input"
+                value={bankForm.accountHolder}
+                onChange={(e) => setBankForm((f) => ({ ...f, accountHolder: e.target.value }))}
+              />
+            </label>
+            <label>
+              Account number
+              <input
+                className="input"
+                inputMode="numeric"
+                value={bankForm.accountNumber}
+                onChange={(e) => setBankForm((f) => ({ ...f, accountNumber: e.target.value }))}
+                placeholder={payoutBank.accountNumberLast4 ? "Enter full number to update" : ""}
+              />
+            </label>
+            <button type="button" className="btn btn-secondary" disabled={busy} onClick={saveBankDetails}>
+              Save bank details
+            </button>
+          </div>
+
+          <h3>Request withdrawal</h3>
+          <div className="marketplace-sell-actions">
+            <input
+              className="input"
+              inputMode="decimal"
+              placeholder="Amount (RM)"
+              value={withdrawAmount}
+              onChange={(e) => setWithdrawAmount(e.target.value)}
+              style={{ maxWidth: "160px" }}
+            />
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={busy || !payoutBank.hasDetails}
+              onClick={requestWithdrawal}
+            >
+              Withdraw
+            </button>
+          </div>
+          {!payoutBank.hasDetails && (
+            <p className="field-hint">Save bank details before requesting a withdrawal.</p>
+          )}
+
+          {withdrawals.length > 0 && (
+            <>
+              <h3>Withdrawal requests</h3>
+              <ul className="marketplace-orders-list">
+                {withdrawals.map((w) => (
+                  <li key={w.id} className="marketplace-order-row">
+                    <span>
+                      {w.amountLabel} · {w.status}
+                      {w.requestedAt ? ` · ${new Date(w.requestedAt).toLocaleDateString()}` : ""}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+
+          {transactions.length > 0 && (
+            <>
+              <h3>Recent activity</h3>
+              <ul className="marketplace-orders-list">
+                {transactions.map((t) => (
+                  <li key={t.id} className="marketplace-order-row">
+                    <span>
+                      {t.description || t.type} ·{" "}
+                      {t.amountCents >= 0 ? "+" : "−"}
+                      {t.amountLabel}
+                    </span>
+                    <span className="field-hint">
+                      {t.createdAt ? new Date(t.createdAt).toLocaleString() : ""}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
         </section>
       )}
 

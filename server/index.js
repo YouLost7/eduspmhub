@@ -893,7 +893,6 @@ function runMarketplaceDigitalUpload(req, res, next) {
 registerMarketplaceRoutes(app, {
   requireAuth,
   loadUsers,
-  saveUsers,
   findUserById,
   APP_BASE_URL,
   STRIPE_SECRET_KEY,

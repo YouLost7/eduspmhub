@@ -32,18 +32,21 @@ test("database bootstrap includes payment tables", async () => {
     `SELECT table_name AS name
        FROM information_schema.tables
       WHERE table_schema = 'public'
-        AND table_name IN ('payments', 'purchase_items', 'payment_events', 'tutoring_bookings', 'tutor_reviews', 'tutor_availability', 'marketplace_listings', 'marketplace_orders', 'marketplace_reports')
+        AND table_name IN ('payments', 'purchase_items', 'payment_events', 'tutoring_bookings', 'tutor_reviews', 'tutor_availability', 'marketplace_listings', 'marketplace_orders', 'marketplace_reports', 'seller_balances', 'balance_transactions', 'withdrawal_requests')
       ORDER BY table_name`
   );
   assert.deepEqual(rows.map((r) => r.name), [
+    "balance_transactions",
     "marketplace_listings",
     "marketplace_orders",
     "marketplace_reports",
     "payment_events",
     "payments",
     "purchase_items",
+    "seller_balances",
     "tutor_availability",
     "tutor_reviews",
     "tutoring_bookings",
+    "withdrawal_requests",
   ]);
 });

@@ -41,21 +41,55 @@ import {
 } from "../marketplace/reports.js";
 import {
   MARKETPLACE_PLATFORM_FEE_BPS,
-  getConnectAccountStatus,
-  ensureConnectAccount,
-  createConnectOnboardingLink,
-  buildCheckoutConnectPaymentIntentData,
-} from "../marketplace/connect.js";
+} from "../marketplace/fees.js";
+import {
+  getBalanceSummary,
+  listBalanceTransactions,
+  listWithdrawalsForUser,
+  listPendingWithdrawals,
+  createWithdrawalRequest,
+  markWithdrawalPaid,
+  cancelWithdrawal,
+  creditMarketplaceSale,
+} from "../marketplace/balance.js";
 
 const STRIPE_MIN_AMOUNT_CENTS_MYR = 200;
 
-async function persistUserField(loadUsers, saveUsers, userId, patch) {
-  const users = await loadUsers();
-  const idx = users.findIndex((u) => u.id === userId);
-  if (idx === -1) return null;
-  users[idx] = { ...users[idx], ...patch };
-  await saveUsers(users);
-  return users[idx];
+async function finalizePaidMarketplaceOrder({
+  orderId,
+  listing,
+  buyerId,
+  sellerId,
+  amountCents,
+  currency,
+  paymentId,
+  buyerNotes,
+  paidAt,
+}) {
+  let order = await getOrderById(orderId);
+  if (!order) {
+    order = await insertOrder({
+      id: orderId,
+      listingId: listing.id,
+      buyerId,
+      sellerId,
+      status: listing.itemType === "digital" ? "completed" : "paid",
+      itemType: listing.itemType,
+      title: listing.title,
+      amountCents,
+      currency,
+      paymentId,
+      buyerNotes,
+      completedAt: listing.itemType === "digital" ? paidAt : null,
+    });
+  }
+  await creditMarketplaceSale({
+    sellerId,
+    orderId,
+    grossCents: amountCents,
+    title: listing.title,
+  });
+  return order;
 }
 
 function resolveListingPrice(body, sellerRole) {
@@ -122,23 +156,29 @@ export async function grantPaidMarketplaceFromSession(session, deps) {
     throw new Error("Missing marketplace checkout metadata");
   }
 
-  const existing = await getPaymentBySessionId("stripe", sessionId);
-  if (existing?.status === "paid") {
-    return getOrderById(orderId);
+  let order = await getOrderById(orderId);
+  if (order) {
+    await creditMarketplaceSale({
+      sellerId: order.sellerId,
+      orderId: order.id,
+      grossCents: order.amountCents,
+      title: order.title,
+    });
+    return order;
   }
 
   const listing = await getListingById(listingId);
   if (!listing) throw new Error("Listing not found for paid session");
 
   const sold = await markListingSold(listingId);
-  if (!sold && listing.status === "sold") {
-    const prior = await getOrderById(orderId);
-    if (prior) return prior;
+  if (!sold && listing.status !== "sold") {
+    throw new Error("Listing is no longer available");
   }
-  if (!sold) {
+  if (!sold && listing.status === "sold") {
     throw new Error("Listing is no longer available");
   }
 
+  const existing = await getPaymentBySessionId("stripe", sessionId);
   const amountCents = Number(
     session?.amount_total ?? existing?.amount_cents ?? m.amountCents ?? listing.priceCents
   );
@@ -170,23 +210,17 @@ export async function grantPaidMarketplaceFromSession(session, deps) {
     paidAt,
   });
 
-  let order = await getOrderById(orderId);
-  if (!order) {
-    order = await insertOrder({
-      id: orderId,
-      listingId,
-      buyerId,
-      sellerId,
-      status: listing.itemType === "digital" ? "completed" : "paid",
-      itemType: listing.itemType,
-      title: listing.title,
-      amountCents,
-      currency,
-      paymentId,
-      buyerNotes: String(m.buyerNotes || ""),
-      completedAt: listing.itemType === "digital" ? paidAt : null,
-    });
-  }
+  order = await finalizePaidMarketplaceOrder({
+    orderId,
+    listing,
+    buyerId,
+    sellerId,
+    amountCents,
+    currency,
+    paymentId,
+    buyerNotes: String(m.buyerNotes || ""),
+    paidAt,
+  });
 
   return order;
 }
@@ -195,7 +229,6 @@ export function registerMarketplaceRoutes(app, deps) {
   const {
     requireAuth,
     loadUsers,
-    saveUsers,
     findUserById,
     APP_BASE_URL,
     STRIPE_SECRET_KEY,
@@ -222,53 +255,75 @@ export function registerMarketplaceRoutes(app, deps) {
     });
   });
 
-  app.get("/api/marketplace/connect/status", requireAuth, async (req, res) => {
+  app.get("/api/marketplace/balance", requireAuth, async (req, res) => {
+    try {
+      const summary = await getBalanceSummary(req.session.userId);
+      const users = await loadUsers();
+      const u = findUserById(users, req.session.userId);
+      res.json({
+        balance: summary,
+        payoutBank: {
+          bankName: u?.payoutBankName || "",
+          accountHolder: u?.payoutAccountHolder || "",
+          accountNumberLast4: u?.payoutAccountNumber
+            ? String(u.payoutAccountNumber).slice(-4)
+            : "",
+          hasDetails: Boolean(
+            u?.payoutBankName && u?.payoutAccountHolder && u?.payoutAccountNumber
+          ),
+        },
+      });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: "Could not load balance" });
+    }
+  });
+
+  app.get("/api/marketplace/balance/transactions", requireAuth, async (req, res) => {
+    try {
+      const transactions = await listBalanceTransactions(req.session.userId);
+      res.json({ transactions });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: "Could not load transactions" });
+    }
+  });
+
+  app.get("/api/marketplace/withdrawals", requireAuth, async (req, res) => {
+    try {
+      const withdrawals = await listWithdrawalsForUser(req.session.userId);
+      res.json({ withdrawals });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: "Could not load withdrawals" });
+    }
+  });
+
+  app.post("/api/marketplace/withdrawals", requireAuth, async (req, res) => {
     try {
       const users = await loadUsers();
       const u = findUserById(users, req.session.userId);
       if (!u) return res.status(401).json({ error: "Not signed in" });
-      if (!stripe) {
-        return res.json({
-          configured: false,
-          connect: { connected: false, ready: false },
-        });
+
+      const amountCents =
+        req.body?.amountCents != null
+          ? Number.parseInt(String(req.body.amountCents), 10)
+          : Math.round(Number.parseFloat(String(req.body?.amount || "")) * 100);
+
+      const result = await createWithdrawalRequest({
+        userId: u.id,
+        amountCents,
+        bankName: u.payoutBankName,
+        accountHolder: u.payoutAccountHolder,
+        accountNumber: u.payoutAccountNumber,
+      });
+      if (result.error) {
+        return res.status(400).json({ error: result.error });
       }
-      const connect = await getConnectAccountStatus(stripe, u.stripeConnectAccountId);
-      res.json({ configured: true, connect });
+      res.status(201).json({ withdrawal: result.withdrawal });
     } catch (e) {
       console.error(e);
-      res.status(500).json({ error: "Could not load payout status" });
-    }
-  });
-
-  app.post("/api/marketplace/connect/onboard", requireAuth, async (req, res) => {
-    try {
-      if (!stripe) {
-        return res.status(503).json({
-          error: "Stripe is not configured. Set STRIPE_SECRET_KEY to enable seller payouts.",
-        });
-      }
-      const users = await loadUsers();
-      let u = findUserById(users, req.session.userId);
-      if (!u) return res.status(401).json({ error: "Not signed in" });
-
-      const { accountId, created } = await ensureConnectAccount(stripe, u);
-      if (created) {
-        u = await persistUserField(loadUsers, saveUsers, u.id, {
-          stripeConnectAccountId: accountId,
-        });
-      }
-
-      const status = await getConnectAccountStatus(stripe, accountId);
-      if (status.ready) {
-        return res.json({ connect: status, alreadyReady: true });
-      }
-
-      const link = await createConnectOnboardingLink(stripe, accountId, APP_BASE_URL);
-      res.json({ url: link.url, connect: status });
-    } catch (e) {
-      console.error(e);
-      res.status(500).json({ error: e.message || "Could not start payout setup" });
+      res.status(500).json({ error: "Could not request withdrawal" });
     }
   });
 
@@ -638,19 +693,16 @@ export function registerMarketplaceRoutes(app, deps) {
           paymentMethodType: "mock",
           paidAt: now,
         });
-        const order = await insertOrder({
-          id: orderId,
-          listingId,
+        const order = await finalizePaidMarketplaceOrder({
+          orderId,
+          listing,
           buyerId: buyer.id,
           sellerId: listing.sellerId,
-          status: listing.itemType === "digital" ? "completed" : "paid",
-          itemType: listing.itemType,
-          title: listing.title,
           amountCents,
           currency: listing.currency,
           paymentId,
           buyerNotes,
-          completedAt: listing.itemType === "digital" ? now : null,
+          paidAt: now,
         });
         return res.json({
           checkoutUrl: `${APP_BASE_URL}/marketplace/orders?payment=success&order=${encodeURIComponent(orderId)}&mock=1`,
@@ -663,13 +715,7 @@ export function registerMarketplaceRoutes(app, deps) {
       const successUrl = `${APP_BASE_URL}/marketplace/orders?payment=success&session_id={CHECKOUT_SESSION_ID}`;
       const cancelUrl = `${APP_BASE_URL}/marketplace/${encodeURIComponent(listingId)}?payment=cancelled`;
 
-      const seller = findUserById(users, listing.sellerId);
-      const paymentIntentData = buildCheckoutConnectPaymentIntentData(
-        amountCents,
-        seller?.stripeConnectAccountId
-      );
-
-      const sessionPayload = {
+      const session = await stripe.checkout.sessions.create({
         mode: "payment",
         payment_method_types: ["card"],
         client_reference_id: String(buyer.id),
@@ -697,12 +743,7 @@ export function registerMarketplaceRoutes(app, deps) {
         ],
         success_url: successUrl,
         cancel_url: cancelUrl,
-      };
-      if (paymentIntentData) {
-        sessionPayload.payment_intent_data = paymentIntentData;
-      }
-
-      const session = await stripe.checkout.sessions.create(sessionPayload);
+      });
 
       res.json({
         checkoutUrl: session.url,
@@ -877,4 +918,61 @@ export function registerMarketplaceRoutes(app, deps) {
       }
     }
   );
+
+  app.get("/api/admin/withdrawals", adminLimiter, async (req, res) => {
+    const key = req.get("x-admin-key");
+    if (!key || key !== ADMIN_KEY) {
+      return res.status(401).json({ error: "Invalid admin key" });
+    }
+    try {
+      const rows = await listPendingWithdrawals();
+      const users = await loadUsers();
+      res.json({
+        withdrawals: rows.map((w) => {
+          const u = findUserById(users, w.userId);
+          return {
+            ...w,
+            amountLabel: formatMoneyLabel(w.amountCents),
+            userName: u?.fullName || "User",
+            userEmail: u?.email || "",
+          };
+        }),
+      });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: "Could not load withdrawals" });
+    }
+  });
+
+  app.post("/api/admin/withdrawals/:id/mark-paid", adminLimiter, async (req, res) => {
+    const key = req.get("x-admin-key");
+    if (!key || key !== ADMIN_KEY) {
+      return res.status(401).json({ error: "Invalid admin key" });
+    }
+    try {
+      const note = String(req.body?.note || "").trim();
+      const w = await markWithdrawalPaid(req.params.id, note);
+      if (!w) return res.status(404).json({ error: "Withdrawal not found or already processed" });
+      res.json({ ok: true, withdrawal: w });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: "Could not mark withdrawal paid" });
+    }
+  });
+
+  app.post("/api/admin/withdrawals/:id/cancel", adminLimiter, async (req, res) => {
+    const key = req.get("x-admin-key");
+    if (!key || key !== ADMIN_KEY) {
+      return res.status(401).json({ error: "Invalid admin key" });
+    }
+    try {
+      const note = String(req.body?.note || "").trim();
+      const w = await cancelWithdrawal(req.params.id, note);
+      if (!w) return res.status(404).json({ error: "Withdrawal not found or already processed" });
+      res.json({ ok: true, withdrawal: w });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: "Could not cancel withdrawal" });
+    }
+  });
 }

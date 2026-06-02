@@ -20,6 +20,8 @@ export default function StaffVerificationPage() {
   const [busyId, setBusyId] = useState("");
   const [mpReports, setMpReports] = useState([]);
   const [mpBusyId, setMpBusyId] = useState("");
+  const [withdrawals, setWithdrawals] = useState([]);
+  const [wdBusyId, setWdBusyId] = useState("");
 
   useEffect(() => {
     try {
@@ -50,6 +52,27 @@ export default function StaffVerificationPage() {
       setMpReports(data.reports || []);
     } catch {
       setMpReports([]);
+    }
+  }, [adminKey]);
+
+  const fetchWithdrawals = useCallback(async () => {
+    if (!adminKey.trim()) {
+      setWithdrawals([]);
+      return;
+    }
+    try {
+      const res = await fetch("/api/admin/withdrawals", {
+        credentials: "include",
+        headers: { "X-Admin-Key": adminKey.trim() },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setWithdrawals([]);
+        return;
+      }
+      setWithdrawals(data.withdrawals || []);
+    } catch {
+      setWithdrawals([]);
     }
   }, [adminKey]);
 
@@ -87,7 +110,8 @@ export default function StaffVerificationPage() {
     }
     fetchPending();
     fetchMarketplaceReports();
-  }, [hydrated, adminKey, fetchPending, fetchMarketplaceReports]);
+    fetchWithdrawals();
+  }, [hydrated, adminKey, fetchPending, fetchMarketplaceReports, fetchWithdrawals]);
 
   function saveKey() {
     const k = keyInput.trim();
@@ -191,6 +215,53 @@ export default function StaffVerificationPage() {
     }
   }
 
+  async function markWithdrawalPaid(id) {
+    setWdBusyId(id);
+    try {
+      const res = await fetch(`/api/admin/withdrawals/${encodeURIComponent(id)}/mark-paid`, {
+        method: "POST",
+        credentials: "include",
+        headers: staffHeaders(adminKey.trim()),
+        body: JSON.stringify({}),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setBanner({ text: data.error || "Could not mark paid", ok: false });
+        return;
+      }
+      setBanner({ text: "Withdrawal marked paid.", ok: true });
+      await fetchWithdrawals();
+    } catch {
+      setBanner({ text: "Network error.", ok: false });
+    } finally {
+      setWdBusyId("");
+    }
+  }
+
+  async function cancelWithdrawal(id) {
+    if (!window.confirm("Cancel this withdrawal and return balance to the seller?")) return;
+    setWdBusyId(id);
+    try {
+      const res = await fetch(`/api/admin/withdrawals/${encodeURIComponent(id)}/cancel`, {
+        method: "POST",
+        credentials: "include",
+        headers: staffHeaders(adminKey.trim()),
+        body: JSON.stringify({ note: "Cancelled by staff" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setBanner({ text: data.error || "Could not cancel", ok: false });
+        return;
+      }
+      setBanner({ text: "Withdrawal cancelled; balance restored.", ok: true });
+      await fetchWithdrawals();
+    } catch {
+      setBanner({ text: "Network error.", ok: false });
+    } finally {
+      setWdBusyId("");
+    }
+  }
+
   async function verifyEducator(email) {
     setBusyId(email);
     setBanner({ text: "", ok: true });
@@ -266,6 +337,7 @@ export default function StaffVerificationPage() {
               }
               fetchPending();
               fetchMarketplaceReports();
+              fetchWithdrawals();
             }}
           >
             Refresh queue
@@ -407,6 +479,69 @@ export default function StaffVerificationPage() {
                           onClick={() => removeReportedListing(r.id)}
                         >
                           Remove listing
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+      </section>
+
+      <section className="staff-card section-block">
+        <h2>Seller withdrawals ({withdrawals.length})</h2>
+        <p className="field-hint">
+          After you bank-transfer the seller, mark paid. Cancel to return funds to their wallet.
+        </p>
+        {withdrawals.length === 0 && adminKey ? (
+          <p className="field-hint">No pending withdrawal requests.</p>
+        ) : null}
+        {withdrawals.length > 0 ? (
+          <div className="staff-table-wrap">
+            <table className="staff-table">
+              <thead>
+                <tr>
+                  <th>Seller</th>
+                  <th>Amount</th>
+                  <th>Bank</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {withdrawals.map((w) => (
+                  <tr key={w.id}>
+                    <td>
+                      {w.userName}
+                      <div className="field-hint">
+                        <code className="staff-mono">{w.userEmail}</code>
+                      </div>
+                    </td>
+                    <td>{w.amountLabel}</td>
+                    <td>
+                      {w.bankName}
+                      <div className="field-hint">
+                        {w.accountHolder} · {w.accountNumber}
+                      </div>
+                    </td>
+                    <td>
+                      <div className="staff-row-actions">
+                        <button
+                          type="button"
+                          className="solid-btn"
+                          disabled={wdBusyId === w.id}
+                          onClick={() => markWithdrawalPaid(w.id)}
+                        >
+                          Mark paid
+                        </button>
+                        <button
+                          type="button"
+                          className="outline-btn"
+                          disabled={wdBusyId === w.id}
+                          onClick={() => cancelWithdrawal(w.id)}
+                        >
+                          Cancel
                         </button>
                       </div>
                     </td>

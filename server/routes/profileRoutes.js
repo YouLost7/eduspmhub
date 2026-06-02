@@ -36,6 +36,9 @@ export function registerProfileRoutes(app, deps) {
         offersOneToOne,
         hourlyRateCents,
         hourlyRate,
+        payoutBankName,
+        payoutAccountHolder,
+        payoutAccountNumber,
       } = req.body;
 
       if (fullName != null) u.fullName = String(fullName).trim();
@@ -83,6 +86,28 @@ export function registerProfileRoutes(app, deps) {
           return res.status(400).json({
             error: "Hourly rate must be at least RM2.00 when offering 1-on-1 sessions.",
           });
+        }
+      }
+
+      if (
+        payoutBankName != null ||
+        payoutAccountHolder != null ||
+        payoutAccountNumber != null
+      ) {
+        if (payoutBankName != null) {
+          u.payoutBankName = String(payoutBankName).trim().slice(0, 80);
+        }
+        if (payoutAccountHolder != null) {
+          u.payoutAccountHolder = String(payoutAccountHolder).trim().slice(0, 120);
+        }
+        if (payoutAccountNumber != null) {
+          const acct = String(payoutAccountNumber).trim().replace(/\s+/g, "");
+          if (acct && (acct.length < 6 || acct.length > 30)) {
+            return res.status(400).json({
+              error: "Account number must be between 6 and 30 digits.",
+            });
+          }
+          u.payoutAccountNumber = acct;
         }
       }
 
