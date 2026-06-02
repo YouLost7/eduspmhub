@@ -13,7 +13,7 @@ function resolveExpiryMs(sess, defaultTtlMs) {
   return now + defaultTtlMs;
 }
 
-export class SqliteSessionStore extends session.Store {
+export class PostgresSessionStore extends session.Store {
   constructor({ ttlMs = 7 * 24 * 60 * 60 * 1000, cleanupIntervalMs = 5 * 60 * 1000 } = {}) {
     super();
     this.ttlMs = ttlMs;

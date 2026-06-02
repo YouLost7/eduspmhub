@@ -21,6 +21,7 @@ Then register and use **Browse**, **My courses**, and **Profile** (requires sign
 - `GET /api/dashboard/featured` — recommendations (boosts your subject if you are a logged-in student), popular courses sorted by enrolment count, educator strip mixing **verified** registered educators, curated house tutors, and up to two **pending** profiles.
 - Auth and admin endpoints have basic IP rate limits (`/api/auth/register`, `/api/auth/login`, `/api/admin/*`) to reduce brute-force and abuse.
 - Paid course checkout uses Stripe (`/api/payments/checkout`) while free courses keep instant enrolment.
+- **1-on-1 tutoring**: verified educators set hourly rate + weekly availability on Profile; students book inside those windows and pay via Stripe; tutors accept/decline (decline triggers automatic Stripe refund); email notifications and ~24h session reminders (console log in dev, [Resend](https://resend.com) with `RESEND_API_KEY` + `MAIL_FROM` in production).
 
 ### Scripts
 
@@ -59,7 +60,13 @@ Other env vars:
 - `SESSION_SECRET` — session signing secret
 - `ADMIN_KEY` — required header for verify endpoint
 - `CORS_ORIGINS` — **production-only** comma-separated allowlist (for example `https://app.example.com,https://admin.example.com`)
-- `DB_PATH` — optional SQLite path (default `server/data/eduspmhub.sqlite`)
+- `PGHOST` — PostgreSQL host (default `localhost`)
+- `PGPORT` — PostgreSQL port (default `5432`)
+- `PGDATABASE` — PostgreSQL database name (default `eduspmhub`)
+- `PGUSER` — PostgreSQL username (default `postgres`)
+- `PGPASSWORD` — PostgreSQL password (default `postgres`)
+- `RESEND_API_KEY` — optional; sends real booking/reminder emails
+- `MAIL_FROM` — sender for Resend (e.g. `EduSPM Hub <onboarding@yourdomain.com>`)
 - `APP_BASE_URL` — frontend base URL for Stripe success/cancel redirects (for example `http://localhost:5173`)
 - `STRIPE_SECRET_KEY` — Stripe API secret key
 - `STRIPE_WEBHOOK_SECRET` — Stripe webhook endpoint signing secret
@@ -81,12 +88,10 @@ stripe listen --forward-to http://localhost:3001/api/payments/webhook
 
 Use Stripe test cards in development (for example `4242 4242 4242 4242`).
 
-## Data files (gitignored)
+## Data persistence
 
-- `server/data/eduspmhub.sqlite` — main app database (users, enrolments, educator courses)
-- `sessions` are also stored in SQLite, so login sessions survive API restarts (until cookie expiry).
-- Payment rows (`payments`, `purchase_items`, `payment_events`) are stored in the same SQLite database.
-- Legacy JSON files (`users.json`, `enrollments.json`, `educator-courses.json`) are imported automatically on first SQLite boot when tables are empty.
+- Primary database is local PostgreSQL (`localhost`) for users, enrolments, educator courses, sessions, and payment tables.
+- Legacy JSON files (`users.json`, `enrollments.json`, `educator-courses.json`) are imported automatically on first boot when corresponding tables are empty.
 
 ## Backend architecture
 
@@ -97,8 +102,9 @@ Use Stripe test cards in development (for example `4242 4242 4242 4242`).
   - `server/routes/educatorRoutes.js`
   - `server/routes/courseRoutes.js`
 - `server/routes/paymentRoutes.js`
-- Persistence is SQLite-backed via `server/sqlite.js` and data adapters in `server/db.js` and `server/educatorCourses.js`.
-- Session persistence uses `server/sessionStore.js` (SQLite), replacing in-memory session storage.
+- `server/routes/tutoringRoutes.js`
+- Persistence is PostgreSQL-backed via `server/sqlite.js` (PostgreSQL adapter) and data adapters in `server/db.js` and `server/educatorCourses.js`.
+- Session persistence uses `server/sessionStore.js` (PostgreSQL), replacing in-memory session storage.
 
 ## Stack
 

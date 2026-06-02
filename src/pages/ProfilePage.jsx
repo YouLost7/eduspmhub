@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from "react";
+import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { friendlyNonJsonApiMessage, apiJson } from "../api.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { profilePhotoSrc } from "../lib/profilePhoto.js";
+import EducatorAvailability from "../components/EducatorAvailability.jsx";
 import { MALAYSIA_SCHOOLS, STUDENT_FORM_LEVELS } from "../../shared/studentOptions.js";
 
 function withLegacyOption(options, currentValue) {
@@ -21,6 +23,11 @@ export default function ProfilePage() {
     user?.educatorInstitution || ""
   );
   const [educatorBio, setEducatorBio] = useState(user?.educatorBio || "");
+  const [offersOneToOne, setOffersOneToOne] = useState(Boolean(user?.offersOneToOne));
+  const [hourlyRate, setHourlyRate] = useState(() => {
+    const c = Number(user?.hourlyRateCents) || 0;
+    return c > 0 ? (c / 100).toFixed(2) : "";
+  });
   const [status, setStatus] = useState({ text: "", ok: true });
   const [licenseFile, setLicenseFile] = useState(null);
   const [licenseBusy, setLicenseBusy] = useState(false);
@@ -42,6 +49,9 @@ export default function ProfilePage() {
     setStudentForm(user.studentForm || "");
     setEducatorInstitution(user.educatorInstitution || "");
     setEducatorBio(user.educatorBio || "");
+    setOffersOneToOne(Boolean(user.offersOneToOne));
+    const c = Number(user.hourlyRateCents) || 0;
+    setHourlyRate(c > 0 ? (c / 100).toFixed(2) : "");
   }, [user]);
 
   async function onSubmit(e) {
@@ -53,6 +63,8 @@ export default function ProfilePage() {
           fullName,
           educatorInstitution,
           educatorBio,
+          offersOneToOne,
+          hourlyRate: offersOneToOne ? hourlyRate : "0",
         });
       } else {
         await updateProfile({
@@ -267,6 +279,10 @@ export default function ProfilePage() {
         ) : null}
       </motion.section>
 
+      {isEducator && user?.offersOneToOne && (
+        <EducatorAvailability verified={Boolean(user?.verified)} />
+      )}
+
       {isEducator && (
         <motion.section
           className="profile-form section-block"
@@ -391,6 +407,46 @@ export default function ProfilePage() {
             <p className="field-hint">
               Primary subject on file: {user?.educatorSubject}
             </p>
+            <div className="field">
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={offersOneToOne}
+                  onChange={(e) => setOffersOneToOne(e.target.checked)}
+                  disabled={!user?.verified}
+                />
+                Offer live 1-on-1 tutoring (homeschool-style hourly sessions)
+              </label>
+            </div>
+            {offersOneToOne && (
+              <div className="field">
+                <label htmlFor="pf-hourly">Hourly rate (RM)</label>
+                <input
+                  id="pf-hourly"
+                  type="number"
+                  min="2"
+                  step="0.50"
+                  value={hourlyRate}
+                  onChange={(e) => setHourlyRate(e.target.value)}
+                  placeholder="e.g. 45.00"
+                  disabled={!user?.verified}
+                />
+                <p className="field-hint">
+                  Minimum RM2.00/hour for Stripe. Students pay hours × rate at checkout.
+                </p>
+              </div>
+            )}
+            {!user?.verified && offersOneToOne && (
+              <p className="field-hint">
+                Verification is required before students can book and pay you.
+              </p>
+            )}
+            {user?.verified && (
+              <p className="field-hint">
+                Manage incoming bookings on{" "}
+                <Link to="/bookings">1-on-1 bookings</Link>.
+              </p>
+            )}
           </>
         )}
 

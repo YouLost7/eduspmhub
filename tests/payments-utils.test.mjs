@@ -25,11 +25,25 @@ test("isPaidPrice distinguishes free vs paid", () => {
   assert.equal(isPaidPrice("RM10.00"), true);
 });
 
-test("sqlite bootstrap includes payment tables", async () => {
+test("database bootstrap includes payment tables", async () => {
   const db = await getDb();
   const rows = await sqlite.all(
     db,
-    "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('payments','purchase_items','payment_events') ORDER BY name"
+    `SELECT table_name AS name
+       FROM information_schema.tables
+      WHERE table_schema = 'public'
+        AND table_name IN ('payments', 'purchase_items', 'payment_events', 'tutoring_bookings', 'tutor_reviews', 'tutor_availability', 'marketplace_listings', 'marketplace_orders', 'marketplace_reports')
+      ORDER BY table_name`
   );
-  assert.deepEqual(rows.map((r) => r.name), ["payment_events", "payments", "purchase_items"]);
+  assert.deepEqual(rows.map((r) => r.name), [
+    "marketplace_listings",
+    "marketplace_orders",
+    "marketplace_reports",
+    "payment_events",
+    "payments",
+    "purchase_items",
+    "tutor_availability",
+    "tutor_reviews",
+    "tutoring_bookings",
+  ]);
 });

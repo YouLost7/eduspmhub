@@ -10,7 +10,7 @@ export async function loadEducatorCourses() {
   const db = await getDb();
   const rows = await sqlite.all(
     db,
-    "SELECT data FROM educator_courses ORDER BY rowid ASC"
+    "SELECT data FROM educator_courses ORDER BY id ASC"
   );
   return rows
     .map((r) => {
@@ -25,29 +25,22 @@ export async function loadEducatorCourses() {
 
 export async function saveEducatorCourses(list) {
   const db = await getDb();
-  await sqlite.run(db, "BEGIN IMMEDIATE");
-  try {
-    await sqlite.run(db, "DELETE FROM educator_courses");
-    for (const c of list) {
-      if (!c || typeof c !== "object") continue;
-      const id = String(c.id || "").trim();
-      if (!id) continue;
-      await sqlite.run(
-        db,
-        "INSERT INTO educator_courses (id, educator_id, status, updated_at, data) VALUES (?, ?, ?, ?, ?)",
-        [
-          id,
-          String(c.educatorId || ""),
-          String(c.status || ""),
-          String(c.updatedAt || c.createdAt || ""),
-          JSON.stringify(c),
-        ]
-      );
-    }
-    await sqlite.run(db, "COMMIT");
-  } catch (e) {
-    await sqlite.run(db, "ROLLBACK").catch(() => {});
-    throw e;
+  await sqlite.run(db, "DELETE FROM educator_courses");
+  for (const c of list) {
+    if (!c || typeof c !== "object") continue;
+    const id = String(c.id || "").trim();
+    if (!id) continue;
+    await sqlite.run(
+      db,
+      "INSERT INTO educator_courses (id, educator_id, status, updated_at, data) VALUES (?, ?, ?, ?, ?)",
+      [
+        id,
+        String(c.educatorId || ""),
+        String(c.status || ""),
+        String(c.updatedAt || c.createdAt || ""),
+        JSON.stringify(c),
+      ]
+    );
   }
 }
 

@@ -41,13 +41,23 @@ import {
   isValidEmbedObject,
 } from "./educatorCourses.js";
 import { getEducatorCourseEnrollmentsSummary } from "./enrollmentSummary.js";
-import { SqliteSessionStore } from "./sessionStore.js";
+import { PostgresSessionStore } from "./sessionStore.js";
 import { hasPurchaseEntitlement } from "./payments/store.js";
 import { registerAuthAdminRoutes } from "./routes/authAdminRoutes.js";
 import { registerProfileRoutes } from "./routes/profileRoutes.js";
 import { registerEducatorRoutes } from "./routes/educatorRoutes.js";
 import { registerCourseRoutes } from "./routes/courseRoutes.js";
 import { registerPaymentRoutes } from "./routes/paymentRoutes.js";
+import { registerTutoringRoutes } from "./routes/tutoringRoutes.js";
+import { registerMarketplaceRoutes } from "./routes/marketplaceRoutes.js";
+import { startTutoringReminderPoller } from "./tutoring/notifications.js";
+import {
+  resolvedMarketplacePhotoMeta,
+  resolvedMarketplaceDigitalMeta,
+} from "./marketplace/uploads.js";
+import { loadEnvOnce } from "./env.js";
+
+loadEnvOnce();
 
 const PREFERRED_PORT = Number(process.env.PORT) || 3001;
 const SERVER_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -55,10 +65,14 @@ const LICENSE_DIR = path.join(SERVER_DIR, "uploads", "educator-licenses");
 const LESSON_PDF_DIR = path.join(SERVER_DIR, "uploads", "lesson-pdfs");
 const LESSON_VIDEO_DIR = path.join(SERVER_DIR, "uploads", "lesson-videos");
 const PROFILE_PHOTO_DIR = path.join(SERVER_DIR, "uploads", "profile-photos");
+const MARKETPLACE_PHOTO_DIR = path.join(SERVER_DIR, "uploads", "marketplace-photos");
+const MARKETPLACE_FILE_DIR = path.join(SERVER_DIR, "uploads", "marketplace-files");
 mkdirSync(LICENSE_DIR, { recursive: true });
 mkdirSync(LESSON_PDF_DIR, { recursive: true });
 mkdirSync(LESSON_VIDEO_DIR, { recursive: true });
 mkdirSync(PROFILE_PHOTO_DIR, { recursive: true });
+mkdirSync(MARKETPLACE_PHOTO_DIR, { recursive: true });
+mkdirSync(MARKETPLACE_FILE_DIR, { recursive: true });
 
 function licenseExtFromMime(mime) {
   const m = String(mime || "").toLowerCase();
@@ -414,7 +428,7 @@ async function lessonStreamAccess(req, courseId, lessonIndex, kind) {
 }
 
 const app = express();
-const sessionStore = new SqliteSessionStore({ ttlMs: SESSION_MAX_AGE_MS });
+const sessionStore = new PostgresSessionStore({ ttlMs: SESSION_MAX_AGE_MS });
 
 function makeLimiter({ windowMs, max, message, skipSuccessfulRequests = false }) {
   return rateLimit({
@@ -806,6 +820,97 @@ registerPaymentRoutes(app, {
   STRIPE_WEBHOOK_SECRET,
   isProd: IS_PROD,
 });
+registerTutoringRoutes(app, {
+  requireAuth,
+  loadUsers,
+  findUserById,
+  toPublicTutorProfile,
+  APP_BASE_URL,
+  STRIPE_SECRET_KEY,
+  isProd: IS_PROD,
+});
+
+const marketplacePhotoUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, MARKETPLACE_PHOTO_DIR),
+    filename: (req, file, cb) => {
+      const meta = resolvedMarketplacePhotoMeta(file);
+      if (!meta) {
+        cb(new Error("Only JPEG, PNG, or WebP images are allowed"));
+        return;
+      }
+      cb(null, `${req.params.id}-${randomUUID()}${meta.ext}`);
+    },
+  }),
+  limits: { fileSize: 4 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (resolvedMarketplacePhotoMeta(file)) cb(null, true);
+    else cb(new Error("Only JPEG, PNG, or WebP images are allowed"));
+  },
+});
+
+const marketplaceDigitalUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, MARKETPLACE_FILE_DIR),
+    filename: (req, file, cb) => {
+      const meta = resolvedMarketplaceDigitalMeta(file);
+      if (!meta) {
+        cb(new Error("Only PDF or ZIP files are allowed"));
+        return;
+      }
+      cb(null, `${req.params.id}-${randomUUID()}${meta.ext}`);
+    },
+  }),
+  limits: { fileSize: 20 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (resolvedMarketplaceDigitalMeta(file)) cb(null, true);
+    else cb(new Error("Only PDF or ZIP files are allowed"));
+  },
+});
+
+function runMarketplacePhotoUpload(req, res, next) {
+  marketplacePhotoUpload.single("photo")(req, res, (err) => {
+    if (err) {
+      let msg = err.message || "Upload failed";
+      if (err.code === "LIMIT_FILE_SIZE") msg = "Photo too large (max 4 MB)";
+      return res.status(400).json({ error: msg });
+    }
+    next();
+  });
+}
+
+function runMarketplaceDigitalUpload(req, res, next) {
+  marketplaceDigitalUpload.single("file")(req, res, (err) => {
+    if (err) {
+      let msg = err.message || "Upload failed";
+      if (err.code === "LIMIT_FILE_SIZE") msg = "File too large (max 20 MB)";
+      return res.status(400).json({ error: msg });
+    }
+    next();
+  });
+}
+
+registerMarketplaceRoutes(app, {
+  requireAuth,
+  loadUsers,
+  saveUsers,
+  findUserById,
+  APP_BASE_URL,
+  STRIPE_SECRET_KEY,
+  isProd: IS_PROD,
+  MARKETPLACE_PHOTO_DIR,
+  MARKETPLACE_FILE_DIR,
+  runMarketplacePhotoUpload,
+  runMarketplaceDigitalUpload,
+  adminLimiter,
+  ADMIN_KEY,
+});
+
+startTutoringReminderPoller({
+  loadUsers,
+  findUserById,
+  APP_BASE_URL,
+});
 
 function runLicenseUpload(req, res, next) {
   licenseUpload.single("license")(req, res, (err) => {
@@ -921,7 +1026,7 @@ listenWithFallback(app, PREFERRED_PORT)
     console.log(`EduSPM_API_PORT=${port}`);
     console.log(`EduSPM Hub API http://localhost:${port}`);
     console.log(
-      `Built-in catalogue seed rows: ${CATALOG.length} (tutor listings are stored in SQLite at server/data/eduspmhub.sqlite by default)`
+      `Built-in catalogue seed rows: ${CATALOG.length} (tutor listings are stored in local PostgreSQL)`
     );
   })
   .catch((err) => {

@@ -27,7 +27,16 @@ export function registerProfileRoutes(app, deps) {
       const idx = users.findIndex((u) => u.id === req.session.userId);
       if (idx === -1) return res.status(404).json({ error: "User not found" });
       const u = users[idx];
-      const { fullName, schoolName, studentForm, educatorInstitution, educatorBio } = req.body;
+      const {
+        fullName,
+        schoolName,
+        studentForm,
+        educatorInstitution,
+        educatorBio,
+        offersOneToOne,
+        hourlyRateCents,
+        hourlyRate,
+      } = req.body;
 
       if (fullName != null) u.fullName = String(fullName).trim();
       if (u.role === "student") {
@@ -58,6 +67,23 @@ export function registerProfileRoutes(app, deps) {
           u.educatorInstitution = String(educatorInstitution).trim();
         }
         if (educatorBio != null) u.educatorBio = String(educatorBio).trim();
+        if (offersOneToOne != null) {
+          u.offersOneToOne = Boolean(offersOneToOne);
+        }
+        if (hourlyRateCents != null) {
+          const cents = Number.parseInt(String(hourlyRateCents), 10);
+          u.hourlyRateCents = Number.isFinite(cents) && cents >= 0 ? cents : 0;
+        } else if (hourlyRate != null) {
+          const raw = String(hourlyRate).trim().replace(/^RM\s*/i, "");
+          const num = Number.parseFloat(raw.replace(/[^\d.]/g, ""));
+          u.hourlyRateCents =
+            Number.isFinite(num) && num > 0 ? Math.round(num * 100) : 0;
+        }
+        if (u.offersOneToOne && u.hourlyRateCents > 0 && u.hourlyRateCents < 200) {
+          return res.status(400).json({
+            error: "Hourly rate must be at least RM2.00 when offering 1-on-1 sessions.",
+          });
+        }
       }
 
       users[idx] = u;

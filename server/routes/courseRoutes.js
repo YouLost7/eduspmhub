@@ -47,14 +47,28 @@ export function registerCourseRoutes(app, deps) {
       if (!u || u.role !== "educator") {
         return res.status(404).json({ error: "Tutor not found" });
       }
+      const { getTutorReviewStats, listReviewsForTutor } = await import("../tutoring/store.js");
+      const stats = await getTutorReviewStats(u.id);
       const tutor = toPublicTutorProfile(u);
       if (!tutor) {
         return res.status(404).json({ error: "Tutor not found" });
       }
+      const reviews = await listReviewsForTutor(u.id, 12);
+      const { listAvailabilityForTutor } = await import("../tutoring/availability.js");
+      const availability = await listAvailabilityForTutor(u.id);
       const ec = await loadEducatorCourses();
       const published = ec.filter((c) => c.educatorId === u.id && c.status === "published");
       const courses = published.map((c) => mapPublishedToCatalogShape(c, u.fullName));
-      res.json({ tutor, courses });
+      res.json({
+        tutor: {
+          ...tutor,
+          reviewCount: stats.reviewCount,
+          averageRating: stats.averageRating,
+        },
+        courses,
+        reviews,
+        availability,
+      });
     } catch (e) {
       console.error(e);
       res.status(500).json({ error: "Could not load tutor profile" });

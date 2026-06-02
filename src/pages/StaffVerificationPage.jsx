@@ -18,6 +18,8 @@ export default function StaffVerificationPage() {
   const [loadErr, setLoadErr] = useState("");
   const [banner, setBanner] = useState({ text: "", ok: true });
   const [busyId, setBusyId] = useState("");
+  const [mpReports, setMpReports] = useState([]);
+  const [mpBusyId, setMpBusyId] = useState("");
 
   useEffect(() => {
     try {
@@ -29,6 +31,27 @@ export default function StaffVerificationPage() {
     }
     setHydrated(true);
   }, []);
+
+  const fetchMarketplaceReports = useCallback(async () => {
+    if (!adminKey.trim()) {
+      setMpReports([]);
+      return;
+    }
+    try {
+      const res = await fetch("/api/admin/marketplace-reports", {
+        credentials: "include",
+        headers: { "X-Admin-Key": adminKey.trim() },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMpReports([]);
+        return;
+      }
+      setMpReports(data.reports || []);
+    } catch {
+      setMpReports([]);
+    }
+  }, [adminKey]);
 
   const fetchPending = useCallback(async () => {
     setLoadErr("");
@@ -63,7 +86,8 @@ export default function StaffVerificationPage() {
       return;
     }
     fetchPending();
-  }, [hydrated, adminKey, fetchPending]);
+    fetchMarketplaceReports();
+  }, [hydrated, adminKey, fetchPending, fetchMarketplaceReports]);
 
   function saveKey() {
     const k = keyInput.trim();
@@ -113,6 +137,57 @@ export default function StaffVerificationPage() {
       window.setTimeout(() => URL.revokeObjectURL(url), 120_000);
     } catch {
       setBanner({ text: "Could not download licence file.", ok: false });
+    }
+  }
+
+  async function dismissReport(reportId) {
+    setMpBusyId(reportId);
+    try {
+      const res = await fetch(
+        `/api/admin/marketplace-reports/${encodeURIComponent(reportId)}/dismiss`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "X-Admin-Key": adminKey.trim() },
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setBanner({ text: data.error || "Could not dismiss report", ok: false });
+        return;
+      }
+      setBanner({ text: "Report dismissed.", ok: true });
+      await fetchMarketplaceReports();
+    } catch {
+      setBanner({ text: "Network error.", ok: false });
+    } finally {
+      setMpBusyId("");
+    }
+  }
+
+  async function removeReportedListing(reportId) {
+    if (!window.confirm("Remove this listing from the marketplace?")) return;
+    setMpBusyId(reportId);
+    try {
+      const res = await fetch(
+        `/api/admin/marketplace-reports/${encodeURIComponent(reportId)}/remove-listing`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "X-Admin-Key": adminKey.trim() },
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setBanner({ text: data.error || "Could not remove listing", ok: false });
+        return;
+      }
+      setBanner({ text: "Listing removed and report marked reviewed.", ok: true });
+      await fetchMarketplaceReports();
+    } catch {
+      setBanner({ text: "Network error.", ok: false });
+    } finally {
+      setMpBusyId("");
     }
   }
 
@@ -190,6 +265,7 @@ export default function StaffVerificationPage() {
                 return;
               }
               fetchPending();
+              fetchMarketplaceReports();
             }}
           >
             Refresh queue
@@ -264,6 +340,73 @@ export default function StaffVerificationPage() {
                           onClick={() => verifyEducator(row.email)}
                         >
                           {busyId === row.email ? "Verifying…" : "Approve"}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+      </section>
+
+      <section className="staff-card section-block">
+        <h2>Marketplace reports ({mpReports.length})</h2>
+        <p className="field-hint">
+          Open reports from students and educators. Dismiss if OK, or remove the listing if it
+          breaks marketplace rules.
+        </p>
+        {mpReports.length === 0 && adminKey ? (
+          <p className="field-hint">No open marketplace reports.</p>
+        ) : null}
+        {mpReports.length > 0 ? (
+          <div className="staff-table-wrap">
+            <table className="staff-table">
+              <thead>
+                <tr>
+                  <th>Listing</th>
+                  <th>Reason</th>
+                  <th>Reporter</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {mpReports.map((r) => (
+                  <tr key={r.id}>
+                    <td>
+                      <strong>{r.listingTitle}</strong>
+                      <div className="field-hint">{r.listingStatus}</div>
+                      {r.details ? (
+                        <div className="field-hint" style={{ marginTop: "0.25rem" }}>
+                          {r.details}
+                        </div>
+                      ) : null}
+                    </td>
+                    <td>{r.reasonLabel}</td>
+                    <td>
+                      {r.reporterName}
+                      <div className="field-hint">
+                        <code className="staff-mono">{r.reporterEmail}</code>
+                      </div>
+                    </td>
+                    <td>
+                      <div className="staff-row-actions">
+                        <button
+                          type="button"
+                          className="outline-btn"
+                          disabled={mpBusyId === r.id}
+                          onClick={() => dismissReport(r.id)}
+                        >
+                          Dismiss
+                        </button>
+                        <button
+                          type="button"
+                          className="solid-btn"
+                          disabled={mpBusyId === r.id}
+                          onClick={() => removeReportedListing(r.id)}
+                        >
+                          Remove listing
                         </button>
                       </div>
                     </td>

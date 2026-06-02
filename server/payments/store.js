@@ -31,7 +31,7 @@ export async function insertPaymentEventIfNew(provider, eventId) {
   const now = new Date().toISOString();
   const inserted = await sqlite.run(
     db,
-    "INSERT OR IGNORE INTO payment_events (provider, event_id, created_at) VALUES (?, ?, ?)",
+    "INSERT INTO payment_events (provider, event_id, created_at) VALUES (?, ?, ?) ON CONFLICT (provider, event_id) DO NOTHING",
     [String(provider), String(eventId), now]
   );
   return inserted?.changes > 0;
@@ -167,9 +167,10 @@ export async function insertPurchaseItemIfMissing({
   const now = new Date().toISOString();
   await sqlite.run(
     db,
-    `INSERT OR IGNORE INTO purchase_items (
+    `INSERT INTO purchase_items (
       id, payment_id, user_id, course_id, course_title, amount_cents, currency, paid_at, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT (id) DO NOTHING`,
     [
       String(id),
       String(paymentId),
@@ -205,6 +206,7 @@ export async function listUserTransactions(userId) {
        p.updated_at
      FROM payments p
      WHERE p.user_id = ?
+       AND p.status != 'pending'
      ORDER BY COALESCE(p.paid_at, p.created_at) DESC`,
     [String(userId)]
   );

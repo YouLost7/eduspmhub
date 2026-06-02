@@ -12,6 +12,12 @@ import ProfilePage from "./pages/ProfilePage.jsx";
 import TutorProfilePage from "./pages/TutorProfilePage.jsx";
 import StaffVerificationPage from "./pages/StaffVerificationPage.jsx";
 import TransactionsPage from "./pages/TransactionsPage.jsx";
+import MyBookingsPage from "./pages/MyBookingsPage.jsx";
+import TutoringBrowsePage from "./pages/TutoringBrowsePage.jsx";
+import MarketplaceBrowsePage from "./pages/MarketplaceBrowsePage.jsx";
+import MarketplaceListingPage from "./pages/MarketplaceListingPage.jsx";
+import MarketplaceSellPage from "./pages/MarketplaceSellPage.jsx";
+import MarketplaceOrdersPage from "./pages/MarketplaceOrdersPage.jsx";
 
 export default function App() {
   return (
@@ -26,6 +32,12 @@ export default function App() {
         <Route element={<UserAppShell />}>
           <Route path="/browse" element={<BrowsePage />} />
           <Route path="/tutor/:tutorId" element={<TutorProfilePage />} />
+          <Route path="/tutoring" element={<TutoringBrowsePage />} />
+          <Route path="/bookings" element={<MyBookingsPage />} />
+          <Route path="/marketplace" element={<MarketplaceBrowsePage />} />
+          <Route path="/marketplace/sell" element={<MarketplaceSellPage />} />
+          <Route path="/marketplace/orders" element={<MarketplaceOrdersPage />} />
+          <Route path="/marketplace/:listingId" element={<MarketplaceListingPage />} />
           <Route path="/my-courses" element={<MyCoursesPage />} />
           <Route path="/transactions" element={<TransactionsPage />} />
           <Route path="/learn/:courseId" element={<CoursePlayerPage />} />

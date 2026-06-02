@@ -4,7 +4,6 @@ import { apiJson } from "../api.js";
 function prettyStatus(status) {
   const s = String(status || "").trim().toLowerCase();
   if (s === "paid") return "Paid";
-  if (s === "pending") return "Pending";
   if (s === "failed") return "Failed";
   if (s === "refunded") return "Refunded";
   return status || "Unknown";
@@ -83,7 +82,7 @@ export default function TransactionsPage() {
     <div>
       <div className="user-page-intro">
         <h1>Transactions</h1>
-        <p>View your paid course history, payment status, and receipt links.</p>
+        <p>Completed payments only — unfinished checkouts are not listed here.</p>
       </div>
 
       {loading && <p className="field-hint">Loading transactions…</p>}

@@ -82,6 +82,30 @@ export default function UserAppShell() {
           >
             {isEducator ? "My teaching" : "My courses"}
           </NavLink>
+          <NavLink
+            to="/marketplace"
+            className={({ isActive }) =>
+              isActive ? "side-item active" : "side-item"
+            }
+          >
+            Study marketplace
+          </NavLink>
+          <NavLink
+            to="/tutoring"
+            className={({ isActive }) =>
+              isActive ? "side-item active" : "side-item"
+            }
+          >
+            {isEducator ? "1-on-1 listing" : "Hire a tutor"}
+          </NavLink>
+          <NavLink
+            to="/bookings"
+            className={({ isActive }) =>
+              isActive ? "side-item active" : "side-item"
+            }
+          >
+            {isEducator ? "1-on-1 bookings" : "My bookings"}
+          </NavLink>
           {!isEducator && (
             <NavLink
               to="/transactions"

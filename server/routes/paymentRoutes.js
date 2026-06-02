@@ -17,6 +17,10 @@ import {
   fetchStripeReceiptUrl,
 } from "../payments/stripe.js";
 import { buildReceiptPdfBuffer } from "../payments/receiptPdf.js";
+import { grantPaidTutoringFromSession } from "./tutoringRoutes.js";
+import { isTutoringPaymentCourseId } from "../tutoring/store.js";
+import { isMarketplacePaymentCourseId } from "../marketplace/store.js";
+import { grantPaidMarketplaceFromSession } from "./marketplaceRoutes.js";
 
 function formatMoneyLabel(cents, currency = "myr") {
   const value = (Number(cents) || 0) / 100;
@@ -34,6 +38,11 @@ function toTransactionDto(row) {
     currency: String(row.currency || "myr").toLowerCase(),
     courseId: row.course_id,
     courseTitle: row.course_title,
+    productType: isMarketplacePaymentCourseId(row.course_id)
+      ? "marketplace"
+      : isTutoringPaymentCourseId(row.course_id)
+        ? "tutoring"
+        : "course",
     receiptUrl: row.receipt_url || "",
     paymentMethodType: row.payment_method_type || "",
     provider: row.provider || "stripe",
@@ -335,29 +344,9 @@ export function registerPaymentRoutes(app, deps) {
         cancel_url: cancelUrl,
       });
 
-      const paymentId = randomUUID();
-      await upsertPaymentRecord({
-        id: paymentId,
-        provider: "stripe",
-        providerSessionId: session.id,
-        providerPaymentIntentId:
-          typeof session.payment_intent === "string" ? session.payment_intent : null,
-        userId,
-        courseId: snap.id,
-        courseTitle: snap.title,
-        amountCents: snap.amountCents,
-        currency: snap.currency,
-        status: "pending",
-        rawPayload: {
-          checkoutSessionId: session.id,
-          mode: session.mode,
-        },
-      });
-
       res.json({
         checkoutUrl: session.url,
         sessionId: session.id,
-        paymentId,
       });
     } catch (e) {
       console.error(e);
@@ -382,7 +371,25 @@ export function registerPaymentRoutes(app, deps) {
 
       if (event.type === "checkout.session.completed") {
         const session = event.data.object;
-        await grantPaidCourseAccessFromSession(session, event.id);
+        const productType = String(session?.metadata?.productType || "");
+        if (productType === "tutoring") {
+          await grantPaidTutoringFromSession(session, {
+            stripe,
+            providerEventId: event.id,
+            loadUsers,
+            findUserById,
+            APP_BASE_URL,
+          });
+        } else if (productType === "marketplace") {
+          await grantPaidMarketplaceFromSession(session, {
+            stripe,
+            providerEventId: event.id,
+            loadUsers,
+            findUserById,
+          });
+        } else {
+          await grantPaidCourseAccessFromSession(session, event.id);
+        }
       } else if (event.type === "payment_intent.payment_failed") {
         const pi = event.data.object;
         const intentId = String(pi?.id || "");
@@ -424,11 +431,6 @@ export function registerPaymentRoutes(app, deps) {
   app.get("/api/payments/transactions", requireAuth, async (req, res) => {
     try {
       const userId = req.session.userId;
-      const users = await loadUsers();
-      const u = findUserById(users, userId);
-      if (!u || u.role !== "student") {
-        return res.status(403).json({ error: "Student access only" });
-      }
       const rows = await listUserTransactions(userId);
       res.json({ transactions: rows.map(toTransactionDto) });
     } catch (e) {
@@ -444,8 +446,8 @@ export function registerPaymentRoutes(app, deps) {
       }
       const users = await loadUsers();
       const u = findUserById(users, req.session.userId);
-      if (!u || u.role !== "student") {
-        return res.status(403).json({ error: "Only students can confirm purchases" });
+      if (!u) {
+        return res.status(401).json({ error: "Not signed in" });
       }
       const sessionId = String(req.body?.sessionId || "").trim();
       if (!sessionId) return res.status(400).json({ error: "sessionId required" });
@@ -459,7 +461,25 @@ export function registerPaymentRoutes(app, deps) {
       if (session.payment_status !== "paid") {
         return res.status(409).json({ error: "Payment is not completed yet." });
       }
-      await grantPaidCourseAccessFromSession(session, null);
+      const productType = String(session?.metadata?.productType || "");
+      if (productType === "tutoring") {
+        await grantPaidTutoringFromSession(session, {
+          stripe,
+          providerEventId: null,
+          loadUsers,
+          findUserById,
+          APP_BASE_URL,
+        });
+      } else if (productType === "marketplace") {
+        await grantPaidMarketplaceFromSession(session, {
+          stripe,
+          providerEventId: null,
+          loadUsers,
+          findUserById,
+        });
+      } else {
+        await grantPaidCourseAccessFromSession(session, null);
+      }
       res.json({ ok: true });
     } catch (e) {
       console.error(e);
