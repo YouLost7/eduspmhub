@@ -26,6 +26,7 @@ import {
 } from "../tutoring/availability.js";
 import { notifyTutoringEvent } from "../tutoring/notifications.js";
 import { refundTutoringBooking } from "../tutoring/refunds.js";
+import { creditTutoringSession } from "../marketplace/balance.js";
 
 function parseScheduledStart(raw) {
   const s = String(raw || "").trim();
@@ -478,6 +479,12 @@ export function registerTutoringRoutes(app, deps) {
         return res.status(409).json({ error: "Only accepted sessions can be marked complete." });
       }
       const updated = await updateBookingStatus(booking.id, "completed");
+      await creditTutoringSession({
+        tutorId: booking.tutorId,
+        bookingId: booking.id,
+        grossCents: booking.amountCents,
+        hours: booking.hours,
+      });
       notifyTutoringEvent({
         type: "completed",
         bookingId: booking.id,

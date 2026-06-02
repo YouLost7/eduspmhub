@@ -21,6 +21,7 @@ import { grantPaidTutoringFromSession } from "./tutoringRoutes.js";
 import { isTutoringPaymentCourseId } from "../tutoring/store.js";
 import { isMarketplacePaymentCourseId } from "../marketplace/store.js";
 import { grantPaidMarketplaceFromSession } from "./marketplaceRoutes.js";
+import { creditCourseSale } from "../marketplace/balance.js";
 
 function formatMoneyLabel(cents, currency = "myr") {
   const value = (Number(cents) || 0) / 100;
@@ -151,6 +152,15 @@ export function registerPaymentRoutes(app, deps) {
       enroll[userId] = list;
       await saveEnrollments(enroll);
     }
+    const course = await resolveCourseForCheckout(courseId);
+    if (course?.educatorId && amountCents > 0) {
+      await creditCourseSale({
+        educatorId: course.educatorId,
+        paymentId,
+        grossCents: amountCents,
+        title: courseTitle,
+      });
+    }
     return {
       checkoutUrl: `${APP_BASE_URL}/my-courses?payment=success&mock=1`,
       sessionId: `mock_${paymentId}`,
@@ -182,7 +192,10 @@ export function registerPaymentRoutes(app, deps) {
     const existing = await getPaymentBySessionId("stripe", sessionId);
     const amountCents = Number(session?.amount_total ?? existing?.amount_cents ?? 0);
     const currency = String(session?.currency || existing?.currency || "myr").toLowerCase();
-    const courseTitle = String(existing?.course_title || "Course");
+    const course = await resolveCourseForCheckout(courseId);
+    const courseTitle = String(
+      course?.title || existing?.course_title || "Course"
+    );
     const paidAt = new Date().toISOString();
     const receiptUrl = await fetchStripeReceiptUrl(stripe, paymentIntentId);
     const paymentId = existing?.id || randomUUID();
@@ -222,6 +235,14 @@ export function registerPaymentRoutes(app, deps) {
       list.push(courseId);
       enroll[userId] = list;
       await saveEnrollments(enroll);
+    }
+    if (course?.educatorId && amountCents > 0) {
+      await creditCourseSale({
+        educatorId: course.educatorId,
+        paymentId,
+        grossCents: amountCents,
+        title: courseTitle,
+      });
     }
     return { userId, courseId, paymentId };
   }

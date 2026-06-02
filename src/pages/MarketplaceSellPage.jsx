@@ -367,10 +367,11 @@ export default function MarketplaceSellPage() {
 
       {tab === "payouts" && (
         <section className="section-block marketplace-wallet">
-          <h2 style={{ marginTop: 0 }}>Seller wallet</h2>
+          <h2 style={{ marginTop: 0 }}>Earnings wallet</h2>
           <p className="field-hint">
-            Sales credit here after payment ({feePct}% platform fee deducted). Withdraw to your
-            bank when you reach {balance?.minWithdrawalLabel || "RM20.00"}.
+            Course sales credit when a student pays. Marketplace items credit on sale. 1-on-1
+            tutoring credits when you mark a session complete ({feePct}% platform fee on all).
+            Withdraw to your bank from {balance?.minWithdrawalLabel || "RM20.00"}.
           </p>
           {balance && (
             <div className="marketplace-wallet-balance">

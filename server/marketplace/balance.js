@@ -84,33 +84,40 @@ export async function listBalanceTransactions(userId, limit = 50) {
   }));
 }
 
-async function hasSaleCreditForOrder(orderId) {
+async function hasSaleCredit(referenceType, referenceId) {
   const db = await getDb();
   const row = await sqlite.get(
     db,
     `SELECT id FROM balance_transactions
-     WHERE reference_type = 'marketplace_order' AND reference_id = ? AND type = 'sale_credit'
+     WHERE reference_type = ? AND reference_id = ? AND type = 'sale_credit'
      LIMIT 1`,
-    [String(orderId)]
+    [String(referenceType), String(referenceId)]
   );
   return Boolean(row);
 }
 
-/** Idempotent: credit seller net of platform fee after a paid marketplace order. */
-export async function creditMarketplaceSale({ sellerId, orderId, grossCents, title }) {
-  if (await hasSaleCreditForOrder(orderId)) {
+/** Idempotent: credit seller net of platform fee. */
+async function creditEarnings({
+  sellerId,
+  grossCents,
+  referenceType,
+  referenceId,
+  descriptionLabel,
+}) {
+  if (!sellerId) return { credited: false, reason: "no_seller" };
+  if (await hasSaleCredit(referenceType, referenceId)) {
     return { credited: false, duplicate: true };
   }
 
   const gross = Number(grossCents) || 0;
   const fee = marketplacePlatformFeeCents(gross);
   const net = marketplaceSellerCreditCents(gross);
-  if (net <= 0) return { credited: false };
+  if (net <= 0) return { credited: false, reason: "zero_amount" };
 
   await ensureBalanceRow(sellerId);
   const db = await getDb();
   const now = new Date().toISOString();
-  const label = String(title || "Marketplace sale").slice(0, 120);
+  const label = String(descriptionLabel || "Sale").slice(0, 120);
 
   await sqlite.run(
     db,
@@ -126,8 +133,8 @@ export async function creditMarketplaceSale({ sellerId, orderId, grossCents, tit
     db,
     `INSERT INTO balance_transactions (
       id, user_id, type, amount_cents, reference_type, reference_id, description, created_at
-    ) VALUES (?, ?, 'sale_credit', ?, 'marketplace_order', ?, ?, ?)`,
-    [randomUUID(), String(sellerId), net, String(orderId), `Sale: ${label}`, now]
+    ) VALUES (?, ?, 'sale_credit', ?, ?, ?, ?, ?)`,
+    [randomUUID(), String(sellerId), net, String(referenceType), String(referenceId), label, now]
   );
 
   if (fee > 0) {
@@ -135,12 +142,13 @@ export async function creditMarketplaceSale({ sellerId, orderId, grossCents, tit
       db,
       `INSERT INTO balance_transactions (
         id, user_id, type, amount_cents, reference_type, reference_id, description, created_at
-      ) VALUES (?, ?, 'platform_fee', ?, 'marketplace_order', ?, ?, ?)`,
+      ) VALUES (?, ?, 'platform_fee', ?, ?, ?, ?, ?)`,
       [
         randomUUID(),
         String(sellerId),
         -fee,
-        String(orderId),
+        String(referenceType),
+        String(referenceId),
         `Platform fee (${MARKETPLACE_PLATFORM_FEE_BPS / 100}%)`,
         now,
       ]
@@ -148,6 +156,41 @@ export async function creditMarketplaceSale({ sellerId, orderId, grossCents, tit
   }
 
   return { credited: true, netCents: net, feeCents: fee };
+}
+
+/** Idempotent: credit seller after a paid marketplace order. */
+export async function creditMarketplaceSale({ sellerId, orderId, grossCents, title }) {
+  return creditEarnings({
+    sellerId,
+    grossCents,
+    referenceType: "marketplace_order",
+    referenceId: orderId,
+    descriptionLabel: `Marketplace: ${title}`,
+  });
+}
+
+/** Idempotent: credit educator after a paid course purchase. */
+export async function creditCourseSale({ educatorId, paymentId, grossCents, title }) {
+  return creditEarnings({
+    sellerId: educatorId,
+    grossCents,
+    referenceType: "course_purchase",
+    referenceId: paymentId,
+    descriptionLabel: `Course: ${title}`,
+  });
+}
+
+/** Idempotent: credit tutor after a completed 1-on-1 session. */
+export async function creditTutoringSession({ tutorId, bookingId, grossCents, hours }) {
+  const h = Number(hours) || 0;
+  const suffix = h > 0 ? ` (${h}h)` : "";
+  return creditEarnings({
+    sellerId: tutorId,
+    grossCents,
+    referenceType: "tutoring_booking",
+    referenceId: bookingId,
+    descriptionLabel: `1-on-1 tutoring${suffix}`,
+  });
 }
 
 export async function listWithdrawalsForUser(userId) {
