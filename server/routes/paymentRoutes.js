@@ -198,10 +198,8 @@ export function registerPaymentRoutes(app, deps) {
     );
     const paidAt = new Date().toISOString();
     const receiptUrl = await fetchStripeReceiptUrl(stripe, paymentIntentId);
-    const paymentId = existing?.id || randomUUID();
-
-    await upsertPaymentRecord({
-      id: paymentId,
+    const paymentId = await upsertPaymentRecord({
+      id: existing?.id || randomUUID(),
       provider: "stripe",
       providerSessionId: sessionId,
       providerPaymentIntentId: paymentIntentId || null,

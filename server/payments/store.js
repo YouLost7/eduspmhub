@@ -56,6 +56,49 @@ export async function upsertPaymentRecord({
 }) {
   const db = await getDb();
   const now = new Date().toISOString();
+  const params = [
+    String(id),
+    String(provider),
+    providerSessionId ? String(providerSessionId) : null,
+    providerPaymentIntentId ? String(providerPaymentIntentId) : null,
+    providerEventId ? String(providerEventId) : null,
+    String(userId),
+    String(courseId),
+    String(courseTitle || "Course"),
+    Number(amountCents) || 0,
+    String(currency || "myr").toLowerCase(),
+    String(status || "pending"),
+    receiptUrl ? String(receiptUrl) : null,
+    paymentMethodType ? String(paymentMethodType) : null,
+    rawPayload ? JSON.stringify(rawPayload) : null,
+    paidAt ? String(paidAt) : null,
+    now,
+    now,
+  ];
+
+  if (providerSessionId) {
+    await sqlite.run(
+      db,
+      `INSERT INTO payments (
+        id, provider, provider_session_id, provider_payment_intent_id, provider_event_id,
+        user_id, course_id, course_title, amount_cents, currency, status, receipt_url,
+        payment_method_type, raw_payload, paid_at, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT (provider, provider_session_id) DO UPDATE SET
+        provider_payment_intent_id = COALESCE(excluded.provider_payment_intent_id, payments.provider_payment_intent_id),
+        provider_event_id = COALESCE(excluded.provider_event_id, payments.provider_event_id),
+        status = excluded.status,
+        receipt_url = COALESCE(excluded.receipt_url, payments.receipt_url),
+        payment_method_type = COALESCE(excluded.payment_method_type, payments.payment_method_type),
+        raw_payload = COALESCE(excluded.raw_payload, payments.raw_payload),
+        paid_at = COALESCE(excluded.paid_at, payments.paid_at),
+        updated_at = excluded.updated_at`,
+      params
+    );
+    const row = await getPaymentBySessionId(provider, providerSessionId);
+    return row?.id ? String(row.id) : String(id);
+  }
+
   await sqlite.run(
     db,
     `INSERT INTO payments (
@@ -73,26 +116,9 @@ export async function upsertPaymentRecord({
       raw_payload = excluded.raw_payload,
       paid_at = excluded.paid_at,
       updated_at = excluded.updated_at`,
-    [
-      String(id),
-      String(provider),
-      providerSessionId ? String(providerSessionId) : null,
-      providerPaymentIntentId ? String(providerPaymentIntentId) : null,
-      providerEventId ? String(providerEventId) : null,
-      String(userId),
-      String(courseId),
-      String(courseTitle || "Course"),
-      Number(amountCents) || 0,
-      String(currency || "myr").toLowerCase(),
-      String(status || "pending"),
-      receiptUrl ? String(receiptUrl) : null,
-      paymentMethodType ? String(paymentMethodType) : null,
-      rawPayload ? JSON.stringify(rawPayload) : null,
-      paidAt ? String(paidAt) : null,
-      now,
-      now,
-    ]
+    params
   );
+  return String(id);
 }
 
 export async function upsertPaymentBySessionId({

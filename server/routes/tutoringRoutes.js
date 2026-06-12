@@ -85,13 +85,12 @@ export async function grantPaidTutoringFromSession(session, deps) {
   if (stripe && paymentIntentId) {
     receiptUrl = await fetchStripeReceiptUrl(stripe, paymentIntentId);
   }
-  const paymentId = existing?.id || randomUUID();
   const courseId = tutoringPaymentCourseId(bookingId);
   const hours = Number(m.hours);
   const courseTitle = `1-on-1 tutoring (${hours}h)`;
 
-  await upsertPaymentRecord({
-    id: paymentId,
+  const paymentId = await upsertPaymentRecord({
+    id: existing?.id || randomUUID(),
     provider: "stripe",
     providerSessionId: sessionId,
     providerPaymentIntentId: paymentIntentId || null,

@@ -188,12 +188,11 @@ export async function grantPaidMarketplaceFromSession(session, deps) {
   if (stripe && paymentIntentId) {
     receiptUrl = await fetchStripeReceiptUrl(stripe, paymentIntentId);
   }
-  const paymentId = existing?.id || randomUUID();
   const courseId = marketplacePaymentCourseId(orderId);
   const courseTitle = `Marketplace: ${listing.title}`;
 
-  await upsertPaymentRecord({
-    id: paymentId,
+  const paymentId = await upsertPaymentRecord({
+    id: existing?.id || randomUUID(),
     provider: "stripe",
     providerSessionId: sessionId,
     providerPaymentIntentId: paymentIntentId || null,

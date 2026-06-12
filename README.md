@@ -7,6 +7,7 @@ Integrated SPM learning experience for Malaysian students and educators. The **f
 ```bash
 cd /home/roots/eduspmhub1
 npm install
+cp .env.example .env   # optional — edit Stripe keys etc.
 npm run dev:all
 ```
 
@@ -31,9 +32,15 @@ Then register and use **Browse**, **My courses**, and **Profile** (requires sign
 | `npm run server`   | API only                                  |
 | `npm run dev`      | Vite only (needs API elsewhere)           |
 | `npm run lint`     | ESLint checks for frontend/backend scripts |
-| `npm run test`     | API smoke test (`GET /api/health`)        |
+| `npm run test`     | Unit tests (API helpers + DB bootstrap)   |
 | `npm run ci`       | Lint + test + build                       |
 | `npm run build`    | Production frontend → `dist/`             |
+
+Optional manual smoke test against a running API:
+
+```bash
+node scripts/smoke-api.mjs
+```
 
 ## User experience
 

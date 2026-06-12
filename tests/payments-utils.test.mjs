@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { priceToCents, isPaidPrice } from "../server/payments/store.js";
+import { priceToCents, isPaidPrice, upsertPaymentRecord, getPaymentBySessionId } from "../server/payments/store.js";
 import { getDb, sqlite } from "../server/sqlite.js";
 
 test("priceToCents treats free-like values as zero", () => {
@@ -49,4 +49,41 @@ test("database bootstrap includes payment tables", async () => {
     "tutoring_bookings",
     "withdrawal_requests",
   ]);
+});
+
+test("upsertPaymentRecord is idempotent for the same Stripe session", async () => {
+  const sessionId = `cs_smoke_${Date.now()}`;
+  const firstId = `pay_first_${Date.now()}`;
+  const secondId = `pay_second_${Date.now()}`;
+  const userId = `user_${Date.now()}`;
+  const courseId = `course_${Date.now()}`;
+
+  const canonicalId = await upsertPaymentRecord({
+    id: firstId,
+    provider: "stripe",
+    providerSessionId: sessionId,
+    userId,
+    courseId,
+    courseTitle: "Smoke course",
+    amountCents: 500,
+    status: "paid",
+    paidAt: new Date().toISOString(),
+  });
+  assert.equal(canonicalId, firstId);
+
+  const resolvedId = await upsertPaymentRecord({
+    id: secondId,
+    provider: "stripe",
+    providerSessionId: sessionId,
+    userId,
+    courseId,
+    courseTitle: "Smoke course",
+    amountCents: 500,
+    status: "paid",
+    paidAt: new Date().toISOString(),
+  });
+  assert.equal(resolvedId, firstId);
+
+  const row = await getPaymentBySessionId("stripe", sessionId);
+  assert.equal(row?.id, firstId);
 });

@@ -39,6 +39,36 @@ async function req(path, { method = "GET", body, cookie, extraHeaders } = {}) {
   return { status: res.status, data, headers: res.headers };
 }
 
+async function reqMultipart(path, { cookie, fieldName, filename, content, contentType }) {
+  const boundary = `----EduSpmSmoke${Date.now()}`;
+  const prefix = Buffer.from(
+    `--${boundary}\r\nContent-Disposition: form-data; name="${fieldName}"; filename="${filename}"\r\nContent-Type: ${contentType}\r\n\r\n`
+  );
+  const suffix = Buffer.from(`\r\n--${boundary}--\r\n`);
+  const body = Buffer.concat([prefix, content, suffix]);
+  const headers = {
+    Accept: "application/json",
+    "Content-Type": `multipart/form-data; boundary=${boundary}`,
+    "Content-Length": String(body.length),
+  };
+  if (cookie) headers.Cookie = cookie;
+  const res = await fetch(`${BASE}${path}`, { method: "POST", headers, body });
+  const text = await res.text();
+  let data = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = { _raw: text.slice(0, 200) };
+  }
+  return { status: res.status, data, headers: res.headers };
+}
+
+/** Minimal valid PDF for licence upload smoke check. */
+const SMOKE_LICENSE_PDF = Buffer.from(
+  "%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n",
+  "utf8"
+);
+
 function extractCookie(setCookie) {
   if (!setCookie) return "";
   const parts = Array.isArray(setCookie) ? setCookie : [setCookie];
@@ -138,6 +168,19 @@ async function main() {
     pass("PUT /api/tutoring/availability");
   } else {
     fail("PUT /api/tutoring/availability", `${r.status} ${r.data?.error || ""}`);
+  }
+
+  r = await reqMultipart("/api/educator/license", {
+    cookie: eduSession,
+    fieldName: "license",
+    filename: "smoke-licence.pdf",
+    content: SMOKE_LICENSE_PDF,
+    contentType: "application/pdf",
+  });
+  if (r.status === 200 && r.data?.user?.hasLicenseDocument !== false) {
+    pass("POST /api/educator/license");
+  } else {
+    fail("POST /api/educator/license", `${r.status} ${r.data?.error || ""}`);
   }
 
   r = await req("/api/admin/verify-educator", {
