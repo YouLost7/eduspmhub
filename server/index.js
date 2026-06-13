@@ -324,14 +324,17 @@ const ADMIN_KEY = IS_PROD
   ? requiredEnv("ADMIN_KEY")
   : process.env.ADMIN_KEY || "dev-admin-change-me";
 const SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
-const APP_BASE_URL = String(process.env.APP_BASE_URL || "http://localhost:5173").replace(
-  /\/$/,
-  ""
-);
+const RAILWAY_PUBLIC_DOMAIN = String(process.env.RAILWAY_PUBLIC_DOMAIN || "").trim();
+const APP_BASE_URL = String(
+  process.env.APP_BASE_URL ||
+    (RAILWAY_PUBLIC_DOMAIN ? `https://${RAILWAY_PUBLIC_DOMAIN}` : "http://localhost:5173")
+).replace(/\/$/, "");
 const STRIPE_SECRET_KEY = String(process.env.STRIPE_SECRET_KEY || "").trim();
 const STRIPE_WEBHOOK_SECRET = String(process.env.STRIPE_WEBHOOK_SECRET || "").trim();
 if (IS_PROD) {
-  requiredEnv("APP_BASE_URL");
+  if (!process.env.APP_BASE_URL && !RAILWAY_PUBLIC_DOMAIN) {
+    requiredEnv("APP_BASE_URL");
+  }
   requiredEnv("STRIPE_SECRET_KEY");
   requiredEnv("STRIPE_WEBHOOK_SECRET");
 }
@@ -340,9 +343,13 @@ if (IS_PROD) {
 const LESSON_MEDIA_TOKEN_SECRET =
   process.env.LESSON_MEDIA_TOKEN_SECRET || SESSION_SECRET;
 const ALLOWED_CORS_ORIGINS = new Set(parseCsvEnv(process.env.CORS_ORIGINS));
+ALLOWED_CORS_ORIGINS.add(APP_BASE_URL);
+if (RAILWAY_PUBLIC_DOMAIN) {
+  ALLOWED_CORS_ORIGINS.add(`https://${RAILWAY_PUBLIC_DOMAIN}`);
+}
 if (IS_PROD && ALLOWED_CORS_ORIGINS.size === 0) {
   throw new Error(
-    "Missing required environment variable: CORS_ORIGINS (comma-separated allowed origins)"
+    "Missing CORS allowlist: set CORS_ORIGINS and/or APP_BASE_URL (Railway sets RAILWAY_PUBLIC_DOMAIN automatically)"
   );
 }
 
@@ -355,11 +362,11 @@ function corsOrigin(origin, cb) {
     cb(null, true);
     return;
   }
-  if (ALLOWED_CORS_ORIGINS.has(origin) || origin === APP_BASE_URL) {
+  if (ALLOWED_CORS_ORIGINS.has(origin)) {
     cb(null, true);
     return;
   }
-  cb(new Error("CORS origin not allowed"));
+  cb(null, false);
 }
 
 const apiCors = cors({

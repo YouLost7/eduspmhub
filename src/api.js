@@ -8,6 +8,13 @@ export function friendlyNonJsonApiMessage(rawText) {
   }
   if (t.startsWith("<!") || t.includes("Cannot POST") || t.includes("Error</title>")) {
     if (import.meta.env?.PROD) {
+      if (/internal server error/i.test(t)) {
+        return (
+          "The server rejected this request (often a CORS URL mismatch). In Railway Variables, set " +
+          "APP_BASE_URL and CORS_ORIGINS to your exact public URL, e.g. " +
+          "https://eduspmhub-production-7959.up.railway.app (no trailing slash), then redeploy."
+        );
+      }
       return (
         "The app could not reach the EduSPM API on this server. In production, deploy with " +
         "Build: npm run build and Start: npm start so Express serves both the React app and /api on the same URL."
