@@ -7,6 +7,12 @@ export function friendlyNonJsonApiMessage(rawText) {
     return "The save payload was too large for the server. Shorten lesson text or save in smaller steps.";
   }
   if (t.startsWith("<!") || t.includes("Cannot POST") || t.includes("Error</title>")) {
+    if (import.meta.env?.PROD) {
+      return (
+        "The app could not reach the EduSPM API on this server. In production, deploy with " +
+        "Build: npm run build and Start: npm start so Express serves both the React app and /api on the same URL."
+      );
+    }
     return (
       "The upload did not reach the EduSPM API. From the project folder run npm run dev:all " +
       "(API + Vite together). If you use npm run dev only, set VITE_API_PORT to your API port " +

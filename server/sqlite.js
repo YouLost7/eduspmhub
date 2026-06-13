@@ -116,20 +116,40 @@ async function migrateLegacyJsonIfNeeded(client) {
   }
 }
 
-async function ensureDb() {
+function buildPoolConfig() {
   const connectionTimeoutMillis = intEnv("PG_CONNECT_TIMEOUT_MS", 8000);
   const queryTimeoutMillis = intEnv("PG_QUERY_TIMEOUT_MS", 15000);
-  pool = new Pool({
+  const common = {
+    connectionTimeoutMillis,
+    query_timeout: queryTimeoutMillis,
+    statement_timeout: queryTimeoutMillis,
+  };
+
+  const databaseUrl = String(process.env.DATABASE_URL || "").trim();
+  if (databaseUrl) {
+    const useSsl =
+      process.env.PGSSLMODE !== "disable" &&
+      !/localhost|127\.0\.0\.1/i.test(databaseUrl);
+    return {
+      ...common,
+      connectionString: databaseUrl,
+      ssl: useSsl ? { rejectUnauthorized: false } : false,
+    };
+  }
+
+  return {
+    ...common,
     host: process.env.PGHOST || "localhost",
     port: intEnv("PGPORT", 5432),
     database: process.env.PGDATABASE || "eduspmhub",
     user: process.env.PGUSER || "postgres",
     password: process.env.PGPASSWORD || "postgres",
-    connectionTimeoutMillis,
-    query_timeout: queryTimeoutMillis,
-    statement_timeout: queryTimeoutMillis,
     ssl: false,
-  });
+  };
+}
+
+async function ensureDb() {
+  pool = new Pool(buildPoolConfig());
   const client = await pool.connect();
   await client.query(
     `CREATE TABLE IF NOT EXISTS users (

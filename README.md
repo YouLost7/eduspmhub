@@ -95,6 +95,32 @@ stripe listen --forward-to http://localhost:3001/api/payments/webhook
 
 Use Stripe test cards in development (for example `4242 4242 4242 4242`).
 
+## Deploy on Railway
+
+Use **one service** that builds the frontend and runs the Express API together (same origin — required for cookie login).
+
+| Setting | Value |
+| -------- | ----- |
+| **Build command** | `npm run build` |
+| **Start command** | `npm start` |
+| **Healthcheck** (optional) | `/api/health` |
+
+Add a **PostgreSQL** plugin in the same Railway project. Railway injects `DATABASE_URL` automatically — the server uses that (with SSL) instead of `PGHOST`/`PGPASSWORD`.
+
+**Required variables** (Railway → Variables):
+
+| Variable | Example |
+| -------- | ------- |
+| `NODE_ENV` | `production` |
+| `APP_BASE_URL` | `https://your-app.up.railway.app` (your public URL, no trailing slash) |
+| `CORS_ORIGINS` | same as `APP_BASE_URL` |
+| `SESSION_SECRET` | long random string |
+| `ADMIN_KEY` | long random string |
+| `STRIPE_SECRET_KEY` | Stripe secret key |
+| `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret |
+
+`PORT` is set by Railway automatically. Do **not** use `npm run dev` or `vite preview` in production — they only proxy `/api` to localhost and login will fail with “Request failed”.
+
 ## Data persistence
 
 - Primary database is local PostgreSQL (`localhost`) for users, enrolments, educator courses, sessions, and payment tables.

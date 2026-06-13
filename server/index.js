@@ -428,7 +428,11 @@ async function lessonStreamAccess(req, courseId, lessonIndex, kind) {
 }
 
 const app = express();
+if (IS_PROD) {
+  app.set("trust proxy", 1);
+}
 const sessionStore = new PostgresSessionStore({ ttlMs: SESSION_MAX_AGE_MS });
+const DIST_DIR = path.join(SERVER_DIR, "..", "dist");
 
 function makeLimiter({ windowMs, max, message, skipSuccessfulRequests = false }) {
   return rateLimit({
@@ -492,7 +496,8 @@ app.use(
   })
 );
 
-app.get("/", (_req, res) => {
+if (!IS_PROD) {
+  app.get("/", (_req, res) => {
   let viteUrl = "";
   try {
     if (existsSync(FRONTEND_DEV_HINT_FILE)) {
@@ -535,7 +540,8 @@ app.get("/", (_req, res) => {
   </ul>
 </body>
 </html>`);
-});
+  });
+}
 
 function requireAuth(req, res, next) {
   if (!req.session.userId) {
@@ -911,6 +917,20 @@ startTutoringReminderPoller({
   APP_BASE_URL,
 });
 
+if (IS_PROD && existsSync(DIST_DIR)) {
+  app.use(express.static(DIST_DIR, { index: false }));
+  app.get(/^(?!\/api\/).*/, (req, res, next) => {
+    if (req.method !== "GET" && req.method !== "HEAD") {
+      return next();
+    }
+    res.sendFile(path.join(DIST_DIR, "index.html"), (err) => {
+      if (err) next(err);
+    });
+  });
+} else if (IS_PROD) {
+  console.warn("Production: dist/ not found — run npm run build before npm start.");
+}
+
 function runLicenseUpload(req, res, next) {
   licenseUpload.single("license")(req, res, (err) => {
     if (err) {
@@ -1019,11 +1039,26 @@ function listenWithFallback(app, startPort, maxAttempts = 30) {
   });
 }
 
-listenWithFallback(app, PREFERRED_PORT)
+function listenApp(appInstance, startPort) {
+  if (IS_PROD) {
+    return new Promise((resolve, reject) => {
+      const server = http.createServer(appInstance);
+      server.once("error", reject);
+      server.listen(startPort, () => resolve({ server, port: startPort }));
+    });
+  }
+  return listenWithFallback(appInstance, startPort);
+}
+
+listenApp(app, PREFERRED_PORT)
   .then(({ port }) => {
     // Machine-readable line for `npm run dev:all` so Vite can proxy to the real port.
     console.log(`EduSPM_API_PORT=${port}`);
-    console.log(`EduSPM Hub API http://localhost:${port}`);
+    if (IS_PROD) {
+      console.log(`EduSPM Hub production http://0.0.0.0:${port}`);
+    } else {
+      console.log(`EduSPM Hub API http://localhost:${port}`);
+    }
     console.log(
       `Built-in catalogue seed rows: ${CATALOG.length} (tutor listings are stored in local PostgreSQL)`
     );
