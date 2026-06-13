@@ -355,12 +355,18 @@ function corsOrigin(origin, cb) {
     cb(null, true);
     return;
   }
-  if (ALLOWED_CORS_ORIGINS.has(origin)) {
+  if (ALLOWED_CORS_ORIGINS.has(origin) || origin === APP_BASE_URL) {
     cb(null, true);
     return;
   }
   cb(new Error("CORS origin not allowed"));
 }
+
+const apiCors = cors({
+  origin: corsOrigin,
+  credentials: true,
+  allowedHeaders: ["Content-Type", "X-Admin-Key", "Stripe-Signature"],
+});
 
 const LESSON_MEDIA_TOKEN_TTL_SEC = (() => {
   const raw = Number.parseInt(process.env.LESSON_MEDIA_TOKEN_TTL_SEC || "", 10);
@@ -462,13 +468,7 @@ const adminLimiter = makeLimiter({
   message: "Too many admin requests. Please slow down and try again shortly.",
 });
 
-app.use(
-  cors({
-    origin: corsOrigin,
-    credentials: true,
-    allowedHeaders: ["Content-Type", "X-Admin-Key", "Stripe-Signature"],
-  })
-);
+app.use("/api", apiCors);
 app.use(
   express.json({
     limit: "8mb",

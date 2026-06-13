@@ -112,8 +112,8 @@ Add a **PostgreSQL** plugin in the same Railway project. Railway injects `DATABA
 | Variable | Example |
 | -------- | ------- |
 | `NODE_ENV` | `production` |
-| `APP_BASE_URL` | `https://eduspmhub-production.up.railway.app` (no trailing slash) |
-| `CORS_ORIGINS` | `https://eduspmhub-production.up.railway.app,http://localhost:5173` |
+| `APP_BASE_URL` | `https://eduspmhub-production-7959.up.railway.app` (your exact Railway domain, no trailing slash) |
+| `CORS_ORIGINS` | same URL as `APP_BASE_URL`, plus `http://localhost:5173` if you want local dev against prod API |
 | `SESSION_SECRET` | long random string |
 | `ADMIN_KEY` | long random string |
 | `STRIPE_SECRET_KEY` | Stripe secret key |
