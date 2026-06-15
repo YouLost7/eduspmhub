@@ -1,4 +1,5 @@
 import { getAdminFinanceSummary } from "../admin/finance.js";
+import { normalizePersonName } from "../validation.js";
 
 export function registerAuthAdminRoutes(app, deps) {
   const {
@@ -52,6 +53,11 @@ export function registerAuthAdminRoutes(app, deps) {
 
       if (!email || !password || !fullName || !role) {
         return res.status(400).json({ error: "Missing required fields" });
+      }
+
+      const normalizedName = normalizePersonName(fullName);
+      if (!normalizedName) {
+        return res.status(400).json({ error: "Full name is required" });
       }
 
       if (!["student", "educator"].includes(role)) {
@@ -108,7 +114,7 @@ export function registerAuthAdminRoutes(app, deps) {
         passwordHash,
         role,
         verified: role === "student",
-        fullName: String(fullName).trim(),
+        fullName: normalizedName,
         schoolName: role === "student" ? String(schoolName).trim() : "",
         studentForm: role === "student" ? String(studentForm || "") : "",
         studentSubject: role === "student" ? String(studentSubject) : "",

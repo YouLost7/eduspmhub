@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { isLikelySchoolEmail } from "../utils/emailValidation.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { MALAYSIA_SCHOOLS, STUDENT_FORM_LEVELS } from "../../shared/studentOptions.js";
+import { normalizePersonName } from "../../shared/personName.js";
 
 const SUBJECTS = [
   ["", "Choose one subject"],
@@ -112,7 +113,7 @@ export default function RegisterPage() {
       email: email.trim(),
       password,
       role,
-      fullName: fullName.trim(),
+      fullName: normalizePersonName(fullName),
       ...(role === "student"
         ? {
             schoolName: schoolName.trim(),
@@ -238,13 +239,17 @@ export default function RegisterPage() {
                   id="fullName"
                   name="fullName"
                   value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
+                  onChange={(e) => setFullName(normalizePersonName(e.target.value))}
                   type="text"
-                  placeholder="Full Name"
+                  placeholder="AHMAD BIN ALI"
                   autoComplete="name"
+                  autoCapitalize="characters"
+                  spellCheck={false}
+                  className="input-uppercase"
                   required
                 />
               </div>
+              <p className="field-hint">Enter your name in capital letters (as on your school record).</p>
             </div>
 
             <div className="field">

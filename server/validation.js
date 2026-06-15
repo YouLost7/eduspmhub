@@ -30,3 +30,5 @@ export function isLikelySchoolEmail(email) {
 }
 
 export { isValidMalaysiaSchool, isValidStudentFormLevel };
+
+export { normalizePersonName } from "../shared/personName.js";

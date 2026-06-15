@@ -5,24 +5,19 @@ import { friendlyNonJsonApiMessage, apiJson } from "../api.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { profilePhotoSrc } from "../lib/profilePhoto.js";
 import EducatorAvailability from "../components/EducatorAvailability.jsx";
-import { MALAYSIA_SCHOOLS, STUDENT_FORM_LEVELS } from "../../shared/studentOptions.js";
 
-function withLegacyOption(options, currentValue) {
-  const v = String(currentValue || "").trim();
-  if (!v) return options;
-  if (options.includes(v)) return options;
-  return [v, ...options];
+function ProfileIdentityRow({ label, value }) {
+  if (!value) return null;
+  return (
+    <div className="profile-identity-row">
+      <dt>{label}</dt>
+      <dd>{value}</dd>
+    </div>
+  );
 }
 
 export default function ProfilePage() {
   const { user, updateProfile, refreshMe } = useAuth();
-  const [fullName, setFullName] = useState(user?.fullName || "");
-  const [schoolName, setSchoolName] = useState(user?.schoolName || "");
-  const [studentForm, setStudentForm] = useState(user?.studentForm || "");
-  const [educatorInstitution, setEducatorInstitution] = useState(
-    user?.educatorInstitution || ""
-  );
-  const [educatorBio, setEducatorBio] = useState(user?.educatorBio || "");
   const [offersOneToOne, setOffersOneToOne] = useState(Boolean(user?.offersOneToOne));
   const [hourlyRate, setHourlyRate] = useState(() => {
     const c = Number(user?.hourlyRateCents) || 0;
@@ -39,41 +34,23 @@ export default function ProfilePage() {
   const photoInputRef = useRef(null);
 
   const isEducator = user?.role === "educator";
-  const schoolOptions = withLegacyOption(MALAYSIA_SCHOOLS, schoolName);
-  const formLevelOptions = withLegacyOption(STUDENT_FORM_LEVELS, studentForm);
 
   useEffect(() => {
     if (!user) return;
-    setFullName(user.fullName || "");
-    setSchoolName(user.schoolName || "");
-    setStudentForm(user.studentForm || "");
-    setEducatorInstitution(user.educatorInstitution || "");
-    setEducatorBio(user.educatorBio || "");
     setOffersOneToOne(Boolean(user.offersOneToOne));
     const c = Number(user.hourlyRateCents) || 0;
     setHourlyRate(c > 0 ? (c / 100).toFixed(2) : "");
   }, [user]);
 
-  async function onSubmit(e) {
+  async function onSubmitTeachingSettings(e) {
     e.preventDefault();
     setStatus({ text: "", ok: true });
     try {
-      if (isEducator) {
-        await updateProfile({
-          fullName,
-          educatorInstitution,
-          educatorBio,
-          offersOneToOne,
-          hourlyRate: offersOneToOne ? hourlyRate : "0",
-        });
-      } else {
-        await updateProfile({
-          fullName,
-          schoolName,
-          studentForm,
-        });
-      }
-      setStatus({ text: "Profile saved.", ok: true });
+      await updateProfile({
+        offersOneToOne,
+        hourlyRate: offersOneToOne ? hourlyRate : "0",
+      });
+      setStatus({ text: "Teaching settings saved.", ok: true });
     } catch (err) {
       setStatus({ text: err.message || "Save failed", ok: false });
     }
@@ -218,6 +195,38 @@ export default function ProfilePage() {
       </div>
 
       <motion.section
+        className="profile-form section-block profile-identity"
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+      >
+        <h2 style={{ marginTop: 0, fontSize: "1.1rem" }}>Account details</h2>
+        <p className="field-hint">
+          These details were set when you registered and cannot be changed here.
+        </p>
+        <dl className="profile-identity-list">
+          <ProfileIdentityRow label="Full name" value={user?.fullName} />
+          {!isEducator ? (
+            <>
+              <ProfileIdentityRow label="School" value={user?.schoolName} />
+              <ProfileIdentityRow label="Form / level" value={user?.studentForm} />
+              <ProfileIdentityRow label="Main subject" value={user?.studentSubject} />
+            </>
+          ) : (
+            <>
+              <ProfileIdentityRow label="Institution" value={user?.educatorInstitution} />
+              <ProfileIdentityRow label="Primary subject" value={user?.educatorSubject} />
+              {user?.educatorBio ? (
+                <div className="profile-identity-row profile-identity-row--bio">
+                  <dt>Bio</dt>
+                  <dd>{user.educatorBio}</dd>
+                </div>
+              ) : null}
+            </>
+          )}
+        </dl>
+      </motion.section>
+
+      <motion.section
         className="profile-form section-block"
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
@@ -333,130 +342,65 @@ export default function ProfilePage() {
         </motion.section>
       )}
 
-      <motion.form
-        className="profile-form section-block"
-        onSubmit={onSubmit}
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-      >
-        <div className="field">
-          <label htmlFor="pf-name">Full name</label>
-          <input
-            id="pf-name"
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
-            required
-          />
-        </div>
-
-        {!isEducator && (
-          <>
-            <div className="field">
-              <label htmlFor="pf-school">School</label>
-              <select
-                id="pf-school"
-                value={schoolName}
-                onChange={(e) => setSchoolName(e.target.value)}
-              >
-                <option value="">Choose your school</option>
-                {schoolOptions.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="field">
-              <label htmlFor="pf-form">Form / level</label>
-              <select
-                id="pf-form"
-                value={studentForm}
-                onChange={(e) => setStudentForm(e.target.value)}
-              >
-                <option value="">Select your level (optional)</option>
-                {formLevelOptions.map((level) => (
-                  <option key={level} value={level}>
-                    {level}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <p className="field-hint">Main subject on file: {user?.studentSubject}</p>
-          </>
-        )}
-
-        {isEducator && (
-          <>
-            <div className="field">
-              <label htmlFor="pf-inst">Institution</label>
+      {isEducator && (
+        <motion.form
+          className="profile-form section-block"
+          onSubmit={onSubmitTeachingSettings}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <h2 style={{ marginTop: 0, fontSize: "1.1rem" }}>1-on-1 tutoring</h2>
+          <p className="field-hint">
+            You can turn live tutoring on or off and set your hourly rate here. Name, institution,
+            and subject stay as registered.
+          </p>
+          <div className="field">
+            <label className="checkbox-label">
               <input
-                id="pf-inst"
-                value={educatorInstitution}
-                onChange={(e) => setEducatorInstitution(e.target.value)}
+                type="checkbox"
+                checked={offersOneToOne}
+                onChange={(e) => setOffersOneToOne(e.target.checked)}
+                disabled={!user?.verified}
               />
-            </div>
+              Offer live 1-on-1 tutoring (homeschool-style hourly sessions)
+            </label>
+          </div>
+          {offersOneToOne && (
             <div className="field">
-              <label htmlFor="pf-bio">Bio</label>
-              <textarea
-                id="pf-bio"
-                rows={4}
-                value={educatorBio}
-                onChange={(e) => setEducatorBio(e.target.value)}
+              <label htmlFor="pf-hourly">Hourly rate (RM)</label>
+              <input
+                id="pf-hourly"
+                type="number"
+                min="2"
+                step="0.50"
+                value={hourlyRate}
+                onChange={(e) => setHourlyRate(e.target.value)}
+                placeholder="e.g. 45.00"
+                disabled={!user?.verified}
               />
+              <p className="field-hint">
+                Minimum RM2.00/hour for Stripe. Students pay hours × rate at checkout.
+              </p>
             </div>
+          )}
+          {!user?.verified && offersOneToOne && (
             <p className="field-hint">
-              Primary subject on file: {user?.educatorSubject}
+              Verification is required before students can book and pay you.
             </p>
-            <div className="field">
-              <label className="checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={offersOneToOne}
-                  onChange={(e) => setOffersOneToOne(e.target.checked)}
-                  disabled={!user?.verified}
-                />
-                Offer live 1-on-1 tutoring (homeschool-style hourly sessions)
-              </label>
-            </div>
-            {offersOneToOne && (
-              <div className="field">
-                <label htmlFor="pf-hourly">Hourly rate (RM)</label>
-                <input
-                  id="pf-hourly"
-                  type="number"
-                  min="2"
-                  step="0.50"
-                  value={hourlyRate}
-                  onChange={(e) => setHourlyRate(e.target.value)}
-                  placeholder="e.g. 45.00"
-                  disabled={!user?.verified}
-                />
-                <p className="field-hint">
-                  Minimum RM2.00/hour for Stripe. Students pay hours × rate at checkout.
-                </p>
-              </div>
-            )}
-            {!user?.verified && offersOneToOne && (
-              <p className="field-hint">
-                Verification is required before students can book and pay you.
-              </p>
-            )}
-            {user?.verified && (
-              <p className="field-hint">
-                Manage incoming bookings on{" "}
-                <Link to="/bookings">1-on-1 bookings</Link>.
-              </p>
-            )}
-          </>
-        )}
-
-        <button type="submit" className="solid-btn">
-          Save changes
-        </button>
-        {status.text && (
-          <p className={status.ok ? "form-success" : "form-error"}>{status.text}</p>
-        )}
-      </motion.form>
+          )}
+          {user?.verified && (
+            <p className="field-hint">
+              Manage incoming bookings on <Link to="/bookings">1-on-1 bookings</Link>.
+            </p>
+          )}
+          <button type="submit" className="solid-btn">
+            Save teaching settings
+          </button>
+          {status.text && (
+            <p className={status.ok ? "form-success" : "form-error"}>{status.text}</p>
+          )}
+        </motion.form>
+      )}
     </div>
   );
 }

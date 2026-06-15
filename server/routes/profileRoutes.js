@@ -17,8 +17,6 @@ export function registerProfileRoutes(app, deps) {
     unlinkAvatarFile,
     PROFILE_PHOTO_DIR,
     existsSync,
-    isValidMalaysiaSchool,
-    isValidStudentFormLevel,
   } = deps;
 
   app.patch("/api/profile", requireAuth, async (req, res) => {
@@ -28,11 +26,6 @@ export function registerProfileRoutes(app, deps) {
       if (idx === -1) return res.status(404).json({ error: "User not found" });
       const u = users[idx];
       const {
-        fullName,
-        schoolName,
-        studentForm,
-        educatorInstitution,
-        educatorBio,
         offersOneToOne,
         hourlyRateCents,
         hourlyRate,
@@ -41,35 +34,25 @@ export function registerProfileRoutes(app, deps) {
         payoutAccountNumber,
       } = req.body;
 
-      if (fullName != null) u.fullName = String(fullName).trim();
-      if (u.role === "student") {
-        if (schoolName != null) {
-          const school = String(schoolName).trim();
-          if (!school) {
-            return res.status(400).json({ error: "School name is required" });
-          }
-          if (!isValidMalaysiaSchool(school)) {
-            return res.status(400).json({
-              error: "Please choose a school from the list of supported Malaysian schools.",
-            });
-          }
-          u.schoolName = school;
-        }
-        if (studentForm != null) {
-          const level = String(studentForm || "").trim();
-          if (!isValidStudentFormLevel(level)) {
-            return res.status(400).json({
-              error: "Please choose a valid Form / Level option from the list.",
-            });
-          }
-          u.studentForm = level;
+      const lockedFields = [
+        "fullName",
+        "schoolName",
+        "studentForm",
+        "studentSubject",
+        "educatorInstitution",
+        "educatorSubject",
+        "educatorBio",
+      ];
+      for (const key of lockedFields) {
+        if (req.body != null && Object.prototype.hasOwnProperty.call(req.body, key)) {
+          return res.status(400).json({
+            error:
+              "Name, school, and other registration details cannot be changed after sign-up. Contact support if something is wrong.",
+          });
         }
       }
+
       if (u.role === "educator") {
-        if (educatorInstitution != null) {
-          u.educatorInstitution = String(educatorInstitution).trim();
-        }
-        if (educatorBio != null) u.educatorBio = String(educatorBio).trim();
         if (offersOneToOne != null) {
           u.offersOneToOne = Boolean(offersOneToOne);
         }
