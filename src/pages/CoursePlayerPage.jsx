@@ -4,12 +4,14 @@ import { motion } from "framer-motion";
 import { apiJson } from "../api.js";
 import { youtubeEmbedSrc, vimeoEmbedSrc } from "../lib/lessonEmbed.js";
 import { useAuth } from "../context/AuthContext.jsx";
+import CourseProgressBar from "../components/CourseProgressBar.jsx";
 
 export default function CoursePlayerPage() {
   const { user } = useAuth();
   const { courseId } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const [payload, setPayload] = useState(null);
+  const [progress, setProgress] = useState(null);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(true);
   const [signedPdfUrl, setSignedPdfUrl] = useState("");
@@ -21,6 +23,7 @@ export default function CoursePlayerPage() {
     try {
       const data = await apiJson(`/api/course-access/${encodeURIComponent(courseId)}`);
       setPayload(data);
+      setProgress(data.progress || null);
     } catch (e) {
       setPayload(null);
       setErr(e.message || "Could not load this course.");
@@ -98,6 +101,30 @@ export default function CoursePlayerPage() {
     };
   }, [courseId, activeIdx, hasPage, hasPdf]);
 
+  useEffect(() => {
+    if (!courseId || user?.role !== "student" || !pages.length) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await apiJson(
+          `/api/course-access/${encodeURIComponent(courseId)}/progress`,
+          { method: "POST", body: { lessonIndex: activeIdx } }
+        );
+        if (!cancelled && data.progress) setProgress(data.progress);
+      } catch {
+        /* non-blocking */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [courseId, activeIdx, pages.length, user?.role]);
+
+  const completedSet = useMemo(
+    () => new Set(progress?.completedLessons || []),
+    [progress?.completedLessons]
+  );
+
   const watermarkText = useMemo(() => {
     const name = String(user?.fullName || "").trim();
     const email = String(user?.email || "").trim();
@@ -119,10 +146,19 @@ export default function CoursePlayerPage() {
             ) : (
               course.educator
             )}{" "}
-            · {course.subject} · {course.lessons} lesson
+            · {course.subject}             · {course.lessons} lesson
             {course.lessons === 1 ? "" : "s"}
           </p>
         )}
+        {progress && progress.totalLessons > 0 ? (
+          <div style={{ marginTop: "0.85rem", maxWidth: "28rem" }}>
+            <CourseProgressBar
+              percent={progress.percent}
+              completedCount={progress.completedCount}
+              totalLessons={progress.totalLessons}
+            />
+          </div>
+        ) : null}
       </div>
 
       {loading && <p className="field-hint">Loading…</p>}
@@ -151,7 +187,15 @@ export default function CoursePlayerPage() {
                     }
                     onClick={() => selectLesson(i)}
                   >
-                    <span className="learn-lesson-idx">{i + 1}</span>
+                    <span
+                      className={
+                        completedSet.has(i) && i !== activeIdx
+                          ? "learn-lesson-idx learn-lesson-idx--done"
+                          : "learn-lesson-idx"
+                      }
+                    >
+                      {completedSet.has(i) ? "✓" : i + 1}
+                    </span>
                     <span className="learn-lesson-title">{p.title}</span>
                   </button>
                 </li>

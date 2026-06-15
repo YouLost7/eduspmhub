@@ -165,6 +165,16 @@ async function ensureDb() {
     )`
   );
   await client.query(
+    `CREATE TABLE IF NOT EXISTS course_progress (
+      user_id TEXT NOT NULL,
+      course_id TEXT NOT NULL,
+      completed_lessons TEXT NOT NULL DEFAULT '[]',
+      last_lesson_index INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, course_id)
+    )`
+  );
+  await client.query(
     `CREATE TABLE IF NOT EXISTS educator_courses (
       id TEXT PRIMARY KEY,
       educator_id TEXT NOT NULL,
@@ -375,6 +385,9 @@ async function ensureDb() {
     "CREATE INDEX IF NOT EXISTS idx_purchase_items_user ON purchase_items(user_id)"
   );
   await client.query("CREATE INDEX IF NOT EXISTS idx_payments_user ON payments(user_id)");
+  await client.query(
+    "CREATE INDEX IF NOT EXISTS idx_course_progress_user ON course_progress(user_id)"
+  );
   await client.query(
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_payments_provider_session ON payments(provider, provider_session_id)"
   );

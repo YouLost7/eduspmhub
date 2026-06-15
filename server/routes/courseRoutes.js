@@ -3,6 +3,12 @@ import {
   listPurchasedCourseIds,
   priceToCents,
 } from "../payments/store.js";
+import {
+  getCourseProgress,
+  getCourseProgressMap,
+  markLessonProgress,
+  progressDto,
+} from "../courseProgress.js";
 
 export function registerCourseRoutes(app, deps) {
   const {
@@ -160,7 +166,20 @@ export function registerCourseRoutes(app, deps) {
         const row = await resolveStudentEnrolledCourseRow(id, users, ecList);
         if (row) courses.push(row);
       }
-      res.json({ courses });
+      const progressMap = await getCourseProgressMap(
+        req.session.userId,
+        courses.map((c) => c.id)
+      );
+      res.json({
+        courses: courses.map((c) => {
+          const stored = progressMap.get(String(c.id));
+          const completedLessons = stored?.completedLessons || [];
+          return {
+            ...c,
+            progress: progressDto(completedLessons, c.lessons, stored?.lastLessonIndex ?? 0),
+          };
+        }),
+      });
     } catch (e) {
       console.error(e);
       res.status(500).json({ error: "Could not load courses" });
@@ -334,6 +353,7 @@ export function registerCourseRoutes(app, deps) {
           externalVideoUrl,
         };
       });
+      const storedProgress = await getCourseProgress(req.session.userId, course.id);
       res.json({
         course: {
           id: course.id,
@@ -349,10 +369,40 @@ export function registerCourseRoutes(app, deps) {
           source: "educator",
         },
         lessonPages,
+        progress: progressDto(
+          storedProgress.completedLessons,
+          course.lessons,
+          storedProgress.lastLessonIndex
+        ),
       });
     } catch (e) {
       console.error(e);
       res.status(500).json({ error: "Could not load course" });
+    }
+  });
+
+  app.post("/api/course-access/:courseId/progress", requireAuth, async (req, res) => {
+    try {
+      const courseId =
+        typeof req.params.courseId === "string"
+          ? req.params.courseId.trim()
+          : req.params.courseId;
+      const ctx = await courseAccessContext(req.session.userId, courseId);
+      if (ctx.err) return res.status(ctx.err).json({ error: ctx.msg });
+      if (ctx.user.role !== "student") {
+        return res.status(403).json({ error: "Only students track course progress" });
+      }
+      const lessonIndex = Number.parseInt(String(req.body?.lessonIndex ?? ""), 10);
+      const progress = await markLessonProgress(
+        req.session.userId,
+        ctx.course.id,
+        lessonIndex,
+        ctx.course.lessons
+      );
+      res.json({ progress });
+    } catch (e) {
+      console.error(e);
+      res.status(400).json({ error: e.message || "Could not save progress" });
     }
   });
 

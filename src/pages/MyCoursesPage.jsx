@@ -4,6 +4,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { apiJson } from "../api.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import EducatorMyTeaching from "../components/EducatorMyTeaching.jsx";
+import CourseProgressBar from "../components/CourseProgressBar.jsx";
 
 function priceToCents(priceLike) {
   const raw = String(priceLike ?? "").trim();
@@ -99,8 +100,8 @@ export default function MyCoursesPage() {
       <div className="user-page-intro">
         <h1>My courses</h1>
         <p>
-          Everything you have enrolled in appears here. Browse the catalogue to add
-          more.
+          Everything you have enrolled in appears here. Open lessons to move your progress
+          forward.
         </p>
         <Link className="solid-btn" to="/browse">
           Browse courses
@@ -124,33 +125,47 @@ export default function MyCoursesPage() {
           <p className="empty-list">No courses yet — browse and tap Enrol to add one.</p>
         ) : (
           <ul className="enrol-list">
-            {courses.map((c) => (
-              <motion.li
-                key={c.id}
-                initial={{ opacity: 0, x: -8 }}
-                animate={{ opacity: 1, x: 0 }}
-              >
-                <span className="enrol-course-block">
-                  <strong>{c.title}</strong>
-                <span className="field-hint" style={{ display: "block", marginTop: "0.2rem" }}>
-                  {c.source === "educator" && c.educatorId ? (
-                    <>
-                      Tutor:{" "}
-                      <Link to={`/tutor/${encodeURIComponent(c.educatorId)}`}>{c.educator}</Link>
-                    </>
-                  ) : (
-                    <>Tutor: {c.educator}</>
-                  )}{" "}
-                  · {c.price}
-                  {" · "}
-                  <strong>{priceToCents(c.price) > 0 ? "Paid" : "Free"}</strong>
-                </span>
-                </span>
-                <Link className="solid-btn" style={{ fontSize: "0.86rem" }} to={`/learn/${encodeURIComponent(c.id)}`}>
-                  Open lessons
-                </Link>
-              </motion.li>
-            ))}
+            {courses.map((c) => {
+              const progress = c.progress || {};
+              const resumeLesson = Number(progress.lastLessonIndex) || 0;
+              const learnHref =
+                progress.percent > 0 && progress.percent < 100
+                  ? `/learn/${encodeURIComponent(c.id)}?lesson=${resumeLesson}`
+                  : `/learn/${encodeURIComponent(c.id)}`;
+              return (
+                <motion.li
+                  key={c.id}
+                  initial={{ opacity: 0, x: -8 }}
+                  animate={{ opacity: 1, x: 0 }}
+                >
+                  <span className="enrol-course-block">
+                    <strong>{c.title}</strong>
+                    <span className="field-hint" style={{ display: "block", marginTop: "0.2rem" }}>
+                      {c.source === "educator" && c.educatorId ? (
+                        <>
+                          Tutor:{" "}
+                          <Link to={`/tutor/${encodeURIComponent(c.educatorId)}`}>{c.educator}</Link>
+                        </>
+                      ) : (
+                        <>Tutor: {c.educator}</>
+                      )}{" "}
+                      · {c.price}
+                      {" · "}
+                      <strong>{priceToCents(c.price) > 0 ? "Paid" : "Free"}</strong>
+                    </span>
+                    <CourseProgressBar
+                      compact
+                      percent={progress.percent}
+                      completedCount={progress.completedCount}
+                      totalLessons={progress.totalLessons ?? c.lessons}
+                    />
+                  </span>
+                  <Link className="solid-btn" style={{ fontSize: "0.86rem" }} to={learnHref}>
+                    {progress.percent >= 100 ? "Review" : progress.percent > 0 ? "Continue" : "Open lessons"}
+                  </Link>
+                </motion.li>
+              );
+            })}
           </ul>
         )}
       </section>

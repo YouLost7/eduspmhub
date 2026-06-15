@@ -154,9 +154,47 @@
 .enrol-list li {
   display: flex;
   justify-content: space-between;
+  align-items: flex-start;
   gap: 1rem;
   padding: 0.65rem 0;
   border-bottom: 1px solid #e4eaf4;
+}
+
+.enrol-course-block {
+  flex: 1;
+  min-width: 0;
+}
+
+.course-progress {
+  margin-top: 0.55rem;
+  max-width: 22rem;
+}
+
+.course-progress--compact {
+  max-width: 100%;
+}
+
+.course-progress-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.78rem;
+  color: #64748b;
+  margin-bottom: 0.3rem;
+}
+
+.course-progress-track {
+  height: 0.45rem;
+  border-radius: 999px;
+  background: #e2e8f0;
+  overflow: hidden;
+}
+
+.course-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #2563eb, #3b82f6);
+  transition: width 0.35s var(--motion-ease, ease);
 }
 
 .empty-list {
@@ -654,6 +692,14 @@
   font-weight: 700;
   color: #64748b;
   min-width: 1.25rem;
+}
+
+.learn-lesson-idx--done {
+  color: #15803d;
+}
+
+.learn-lesson-btn--active .learn-lesson-idx--done {
+  color: #fff;
 }
 
 .learn-lesson-title {
