@@ -3,9 +3,11 @@ import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { apiJson } from "../api.js";
 import { useAuth } from "../context/AuthContext.jsx";
+import { useI18n } from "../i18n/I18nContext.jsx";
 
 export default function MarketplaceBrowsePage() {
   const { user } = useAuth();
+  const { t } = useI18n();
   const [listings, setListings] = useState([]);
   const [meta, setMeta] = useState(null);
   const [category, setCategory] = useState("");
@@ -31,11 +33,11 @@ export default function MarketplaceBrowsePage() {
       setMeta(metaData);
     } catch (e) {
       setListings([]);
-      setErr(e.message || "Could not load marketplace");
+      setErr(e.message || t("marketplace.loadError"));
     } finally {
       setLoading(false);
     }
-  }, [category, itemType, q]);
+  }, [category, itemType, q, t]);
 
   useEffect(() => {
     load();
@@ -50,12 +52,12 @@ export default function MarketplaceBrowsePage() {
     <div>
       <div className="user-page-intro">
         <p style={{ margin: "0 0 0.35rem", fontSize: "0.86rem" }}>
-          <Link to="/browse">← Browse</Link>
+          <Link to="/browse">{t("marketplace.backToBrowse")}</Link>
         </p>
-        <h1>Study marketplace</h1>
+        <h1>{t("marketplace.title")}</h1>
         <p style={{ margin: 0, color: "#475569" }}>
-          Buy and sell used books, notes, and practice materials. Physical pickup or digital download.
-          {studentCap ? ` Students can list up to ${studentCap}.` : ""}
+          {t("marketplace.intro")}
+          {studentCap ? ` ${t("marketplace.studentCap", { cap: studentCap })}` : ""}
         </p>
       </div>
 
@@ -63,7 +65,7 @@ export default function MarketplaceBrowsePage() {
         <input
           type="search"
           className="input"
-          placeholder="Search title or subject…"
+          placeholder={t("marketplace.searchPlaceholder")}
           value={q}
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && load()}
@@ -72,9 +74,9 @@ export default function MarketplaceBrowsePage() {
           className="input"
           value={category}
           onChange={(e) => setCategory(e.target.value)}
-          aria-label="Category"
+          aria-label={t("marketplace.category")}
         >
-          <option value="">All categories</option>
+          <option value="">{t("marketplace.allCategories")}</option>
           {(meta?.categories || []).map((c) => (
             <option key={c.id} value={c.id}>
               {c.label}
@@ -85,21 +87,21 @@ export default function MarketplaceBrowsePage() {
           className="input"
           value={itemType}
           onChange={(e) => setItemType(e.target.value)}
-          aria-label="Item type"
+          aria-label={t("marketplace.itemType")}
         >
-          <option value="">Physical & digital</option>
-          <option value="physical">Physical pickup</option>
-          <option value="digital">Digital download</option>
+          <option value="">{t("marketplace.allTypes")}</option>
+          <option value="physical">{t("marketplace.physical")}</option>
+          <option value="digital">{t("marketplace.digital")}</option>
         </select>
         <Link to="/marketplace/sell" className="btn btn-primary">
-          Sell an item
+          {t("marketplace.sellItem")}
         </Link>
         <Link to="/marketplace/orders" className="btn btn-secondary">
-          My orders
+          {t("marketplace.myOrders")}
         </Link>
       </div>
 
-      {loading && <p className="field-hint">Loading…</p>}
+      {loading && <p className="field-hint">{t("common.loading")}</p>}
       {err && (
         <p className="form-error" role="alert">
           {err}
@@ -107,7 +109,7 @@ export default function MarketplaceBrowsePage() {
       )}
 
       {!loading && listings.length === 0 && (
-        <p className="field-hint">No listings yet. Be the first to sell study materials.</p>
+        <p className="field-hint">{t("marketplace.empty")}</p>
       )}
 
       <div className="marketplace-grid">
@@ -135,13 +137,13 @@ export default function MarketplaceBrowsePage() {
                 <h2 className="marketplace-card-title">{item.title}</h2>
                 <p className="field-hint" style={{ margin: "0.15rem 0" }}>
                   {item.categoryLabel} ·{" "}
-                  {item.itemType === "digital" ? "Digital" : "Pickup"}
+                  {item.itemType === "digital" ? t("marketplace.digitalBadge") : t("marketplace.pickupBadge")}
                   {item.subject ? ` · ${item.subject}` : ""}
                 </p>
                 <p className="marketplace-card-price">{item.priceLabel}</p>
                 <p className="field-hint" style={{ margin: "0.25rem 0 0" }}>
                   {item.sellerName}
-                  {item.sellerRole === "student" ? " (student)" : " (educator)"}
+                  {item.sellerRole === "student" ? ` ${t("marketplace.sellerStudent")}` : ` ${t("marketplace.sellerEducator")}`}
                 </p>
               </div>
             </Link>

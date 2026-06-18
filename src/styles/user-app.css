@@ -247,6 +247,60 @@
   text-transform: uppercase;
 }
 
+.lang-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.15rem;
+  border: 1px solid #d8dee8;
+  border-radius: 999px;
+  background: #fff;
+}
+
+.lang-switcher-btn {
+  border: none;
+  background: transparent;
+  color: #64748b;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0.28rem 0.55rem;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.lang-switcher-btn:hover {
+  color: #1e3a5f;
+}
+
+.lang-switcher-btn--active {
+  background: #2563eb;
+  color: #fff;
+}
+
+.user-app-user .lang-switcher {
+  margin-right: 0.35rem;
+}
+
+.top-actions .lang-switcher {
+  margin-right: 0.35rem;
+}
+
+.auth-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.35rem;
+}
+
+.auth-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
 .profile-form label {
   display: block;
   font-weight: 600;

@@ -2,6 +2,8 @@ import { useState } from "react";
 import { Link, useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useAuth } from "../context/AuthContext.jsx";
+import { useI18n } from "../i18n/I18nContext.jsx";
+import LanguageSwitcher from "../components/LanguageSwitcher.jsx";
 
 function safeAppPath(target) {
   const t = String(target || "").trim();
@@ -16,6 +18,7 @@ export default function LoginPage() {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const { login } = useAuth();
+  const { t } = useI18n();
   const [status, setStatus] = useState({ text: "", color: "" });
   const [busy, setBusy] = useState(false);
 
@@ -31,7 +34,7 @@ export default function LoginPage() {
     const password = String(fd.get("password") || "").trim();
 
     if (!email || !password) {
-      setStatus({ text: "Please fill in all login fields.", color: "#b91c1c" });
+      setStatus({ text: t("auth.fillLoginFields"), color: "#b91c1c" });
       return;
     }
 
@@ -39,7 +42,7 @@ export default function LoginPage() {
     setStatus({ text: "", color: "" });
     try {
       await login(email, password);
-      setStatus({ text: "Signed in. Redirecting…", color: "#15803d" });
+      setStatus({ text: t("auth.signedInRedirect"), color: "#15803d" });
       let to = baseTarget;
       if (enroll) {
         const sep = to.includes("?") ? "&" : "?";
@@ -47,7 +50,7 @@ export default function LoginPage() {
       }
       navigate(to, { replace: true });
     } catch (err) {
-      setStatus({ text: err.message || "Login failed", color: "#b91c1c" });
+      setStatus({ text: err.message || t("auth.loginFailed"), color: "#b91c1c" });
     } finally {
       setBusy(false);
     }
@@ -66,15 +69,18 @@ export default function LoginPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
         >
-          <Link className="brand" to="/">
-            EduSPM Hub
-          </Link>
-          <h1>Welcome Back</h1>
-          <p className="subtext">Sign in with the email and password you registered.</p>
+          <div className="auth-card-top">
+            <Link className="brand" to="/">
+              EduSPM Hub
+            </Link>
+            <LanguageSwitcher />
+          </div>
+          <h1>{t("auth.welcomeBack")}</h1>
+          <p className="subtext">{t("auth.signInHint")}</p>
 
           <form id="loginForm" onSubmit={onSubmit}>
             <div>
-              <label htmlFor="email">Email</label>
+              <label htmlFor="email">{t("auth.email")}</label>
               <input
                 id="email"
                 name="email"
@@ -86,12 +92,12 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label htmlFor="password">Password</label>
+              <label htmlFor="password">{t("auth.password")}</label>
               <input
                 id="password"
                 name="password"
                 type="password"
-                placeholder="Enter your password"
+                placeholder={t("auth.passwordPlaceholder")}
                 autoComplete="current-password"
                 required
               />
@@ -104,7 +110,7 @@ export default function LoginPage() {
               whileHover={{ scale: busy ? 1 : 1.02 }}
               whileTap={{ scale: busy ? 1 : 0.98 }}
             >
-              {busy ? "Signing in…" : "Login"}
+              {busy ? t("auth.signingIn") : t("auth.login")}
             </motion.button>
             <p className="status" style={{ color: status.color || undefined }}>
               {status.text}
@@ -112,7 +118,8 @@ export default function LoginPage() {
           </form>
 
           <p className="helper">
-            No account yet? <Link to="/register">Create one here</Link>
+            {t("auth.noAccount")}{" "}
+            <Link to="/register">{t("auth.createAccount")}</Link>
           </p>
         </motion.section>
       </main>

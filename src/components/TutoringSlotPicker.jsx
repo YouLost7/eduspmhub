@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiJson } from "../api.js";
+import { useI18n } from "../i18n/I18nContext.jsx";
 
 function groupByDay(slots) {
   const map = new Map();
@@ -20,10 +21,19 @@ export default function TutoringSlotPicker({
   selectedStart,
   onSelect,
 }) {
+  const { t } = useI18n();
   const [slots, setSlots] = useState([]);
   const [estimate, setEstimate] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
+
+  const hoursLabel = useMemo(
+    () =>
+      hours === 1
+        ? t("slotPicker.hourSingular", { count: hours })
+        : t("slotPicker.hoursPlural", { count: hours }),
+    [hours, t]
+  );
 
   const load = useCallback(async () => {
     if (!tutorId || !hours) return;
@@ -38,11 +48,11 @@ export default function TutoringSlotPicker({
       setEstimate(data.estimatedTotalLabel || "");
     } catch (e) {
       setSlots([]);
-      setErr(e.message || "Could not load available times");
+      setErr(e.message || t("slotPicker.loadError"));
     } finally {
       setLoading(false);
     }
-  }, [tutorId, hours]);
+  }, [tutorId, hours, t]);
 
   useEffect(() => {
     load();
@@ -53,7 +63,7 @@ export default function TutoringSlotPicker({
   return (
     <div className="slot-picker">
       <div className="slot-picker-head">
-        <span className="slot-picker-title">Choose a time</span>
+        <span className="slot-picker-title">{t("slotPicker.chooseTime")}</span>
         {hourlyRateLabel ? (
           <span className="field-hint">
             {hourlyRateLabel}
@@ -62,7 +72,7 @@ export default function TutoringSlotPicker({
         ) : null}
       </div>
 
-      {loading && <p className="field-hint">Loading open slots…</p>}
+      {loading && <p className="field-hint">{t("slotPicker.loadingSlots")}</p>}
       {err && (
         <p className="form-error" role="alert">
           {err}
@@ -70,10 +80,7 @@ export default function TutoringSlotPicker({
       )}
 
       {!loading && !err && slots.length === 0 && (
-        <p className="field-hint">
-          No open slots for {hours} hour{hours === 1 ? "" : "s"} in the next 3 weeks. Try a
-          shorter session or check back later.
-        </p>
+        <p className="field-hint">{t("slotPicker.noSlots", { hours: hoursLabel })}</p>
       )}
 
       {!loading && grouped.length > 0 && (
@@ -108,7 +115,7 @@ export default function TutoringSlotPicker({
 
       {selectedStart ? (
         <p className="field-hint slot-picker-selected">
-          Selected:{" "}
+          {t("slotPicker.selected")}{" "}
           <strong>
             {new Date(selectedStart).toLocaleString(undefined, {
               weekday: "short",
@@ -120,7 +127,7 @@ export default function TutoringSlotPicker({
           </strong>
         </p>
       ) : (
-        <p className="field-hint">Tap a time slot to continue.</p>
+        <p className="field-hint">{t("slotPicker.tapToContinue")}</p>
       )}
     </div>
   );

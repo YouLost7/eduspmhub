@@ -1,19 +1,24 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiJson } from "../api.js";
-
-function prettyStatus(status) {
-  const s = String(status || "").trim().toLowerCase();
-  if (s === "paid") return "Paid";
-  if (s === "failed") return "Failed";
-  if (s === "refunded") return "Refunded";
-  return status || "Unknown";
-}
+import { useI18n } from "../i18n/I18nContext.jsx";
 
 export default function TransactionsPage() {
+  const { t } = useI18n();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [receiptDetails, setReceiptDetails] = useState({});
+
+  const prettyStatus = useCallback(
+    (status) => {
+      const s = String(status || "").trim().toLowerCase();
+      if (s === "paid") return t("transactions.statusPaid");
+      if (s === "failed") return t("transactions.statusFailed");
+      if (s === "refunded") return t("transactions.statusRefunded");
+      return status || t("transactions.statusUnknown");
+    },
+    [t]
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -22,11 +27,11 @@ export default function TransactionsPage() {
       const data = await apiJson("/api/payments/transactions");
       setRows(Array.isArray(data.transactions) ? data.transactions : []);
     } catch (e) {
-      setErr(e.message || "Could not load transactions");
+      setErr(e.message || t("transactions.loadError"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     load();
@@ -42,7 +47,7 @@ export default function TransactionsPage() {
       }));
       return data.receipt || null;
     } catch {
-      setErr("Could not load receipt details for this transaction.");
+      setErr(t("transactions.receiptLoadError"));
       setReceiptDetails((prev) => ({
         ...prev,
         [paymentId]: null,
@@ -59,16 +64,16 @@ export default function TransactionsPage() {
       return;
     }
     if (String(row.provider || "").toLowerCase() === "mock") {
-      setErr("Mock payments do not have an external Stripe receipt. Use Receipt details instead.");
+      setErr(t("transactions.mockReceiptHint"));
       return;
     }
-    setErr("Receipt link is not ready yet. Please try again in a moment.");
+    setErr(t("transactions.receiptLinkNotReady"));
   }
 
   function downloadReceiptPdf(row) {
     const paymentId = encodeURIComponent(String(row?.id || "").trim());
     if (!paymentId) {
-      setErr("Missing transaction ID for PDF receipt.");
+      setErr(t("transactions.missingTransactionId"));
       return;
     }
     window.open(
@@ -81,11 +86,11 @@ export default function TransactionsPage() {
   return (
     <div>
       <div className="user-page-intro">
-        <h1>Transactions</h1>
-        <p>Completed payments only — unfinished checkouts are not listed here.</p>
+        <h1>{t("transactions.title")}</h1>
+        <p>{t("transactions.intro")}</p>
       </div>
 
-      {loading && <p className="field-hint">Loading transactions…</p>}
+      {loading && <p className="field-hint">{t("transactions.loading")}</p>}
       {err && (
         <p className="form-error" role="alert">
           {err}
@@ -93,19 +98,20 @@ export default function TransactionsPage() {
       )}
 
       {!loading && !err && rows.length === 0 ? (
-        <p className="field-hint">No paid transactions yet.</p>
+        <p className="field-hint">{t("transactions.empty")}</p>
       ) : null}
 
       {!loading && !err && rows.length > 0 ? (
         <div className="cards-grid">
           {rows.map((row) => (
             <article key={row.id} className="course-card">
-              <h3>{row.courseTitle || "Course purchase"}</h3>
+              <h3>{row.courseTitle || t("transactions.coursePurchase")}</h3>
               <p>
                 {row.amountLabel} · {prettyStatus(row.status)}
               </p>
               <p className="field-hint">
-                Paid at: {row.paidAt ? new Date(row.paidAt).toLocaleString() : "Pending"}
+                {t("transactions.paidAt")}{" "}
+                {row.paidAt ? new Date(row.paidAt).toLocaleString() : t("transactions.pending")}
               </p>
               <div className="course-card-actions">
                 <button
@@ -113,24 +119,33 @@ export default function TransactionsPage() {
                   className="outline-btn"
                   onClick={() => loadReceipt(row.id)}
                 >
-                  Receipt details
+                  {t("transactions.receiptDetails")}
                 </button>
                 <button
                   type="button"
                   className="solid-btn"
                   onClick={() => openReceipt(row)}
                 >
-                  Open receipt
+                  {t("transactions.openReceipt")}
                 </button>
               </div>
               {receiptDetails[row.id] ? (
                 <div className="field-hint" style={{ marginTop: "0.5rem" }}>
-                  <p>Transaction ID: {receiptDetails[row.id].id}</p>
-                  <p>Provider: {String(receiptDetails[row.id].provider || "stripe").toUpperCase()}</p>
-                  <p>Method: {receiptDetails[row.id].paymentMethodType || "n/a"}</p>
                   <p>
-                    Receipt link:{" "}
-                    {receiptDetails[row.id].receiptUrl ? "Available" : "Not provided by provider yet"}
+                    {t("transactions.transactionId")} {receiptDetails[row.id].id}
+                  </p>
+                  <p>
+                    {t("transactions.provider")}{" "}
+                    {String(receiptDetails[row.id].provider || "stripe").toUpperCase()}
+                  </p>
+                  <p>
+                    {t("transactions.method")} {receiptDetails[row.id].paymentMethodType || "n/a"}
+                  </p>
+                  <p>
+                    {t("transactions.receiptLink")}{" "}
+                    {receiptDetails[row.id].receiptUrl
+                      ? t("transactions.receiptAvailable")
+                      : t("transactions.receiptNotReady")}
                   </p>
                   <div style={{ marginTop: "0.5rem" }}>
                     <button
@@ -138,7 +153,7 @@ export default function TransactionsPage() {
                       className="outline-btn"
                       onClick={() => downloadReceiptPdf(row)}
                     >
-                      Download PDF
+                      {t("transactions.downloadPdf")}
                     </button>
                   </div>
                 </div>

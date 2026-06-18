@@ -26,6 +26,7 @@ export function registerProfileRoutes(app, deps) {
       if (idx === -1) return res.status(404).json({ error: "User not found" });
       const u = users[idx];
       const {
+        educatorBio,
         offersOneToOne,
         hourlyRateCents,
         hourlyRate,
@@ -41,7 +42,6 @@ export function registerProfileRoutes(app, deps) {
         "studentSubject",
         "educatorInstitution",
         "educatorSubject",
-        "educatorBio",
       ];
       for (const key of lockedFields) {
         if (req.body != null && Object.prototype.hasOwnProperty.call(req.body, key)) {
@@ -53,6 +53,9 @@ export function registerProfileRoutes(app, deps) {
       }
 
       if (u.role === "educator") {
+        if (educatorBio != null) {
+          u.educatorBio = String(educatorBio).trim().slice(0, 2000);
+        }
         if (offersOneToOne != null) {
           u.offersOneToOne = Boolean(offersOneToOne);
         }

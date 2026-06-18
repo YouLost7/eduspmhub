@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { apiJson, friendlyNonJsonApiMessage } from "../api.js";
 import { useAuth } from "../context/AuthContext.jsx";
+import { useI18n } from "../i18n/I18nContext.jsx";
 
 const EMPTY = {
   itemType: "physical",
@@ -16,15 +17,16 @@ const EMPTY = {
   formLevel: "",
 };
 
-function statusBadge(status) {
-  if (status === "active") return "Live";
-  if (status === "draft") return "Draft";
-  if (status === "sold") return "Sold";
+function statusBadge(status, t) {
+  if (status === "active") return t("marketplace.statusLive");
+  if (status === "draft") return t("marketplace.statusDraft");
+  if (status === "sold") return t("marketplace.statusSold");
   return status;
 }
 
 export default function MarketplaceSellPage() {
   const { user } = useAuth();
+  const { t } = useI18n();
   const [searchParams] = useSearchParams();
   const editId = searchParams.get("edit");
   const tabParam = searchParams.get("tab");
@@ -126,14 +128,14 @@ export default function MarketplaceSellPage() {
           body: { ...form, publish: false },
         });
         setListing(data.listing);
-        setOkMsg("Draft saved.");
+        setOkMsg(t("marketplace.draftSaved"));
       } else {
         const data = await apiJson("/api/marketplace/listings", {
           method: "POST",
           body: { ...form, publish: false },
         });
         setListing(data.listing);
-        setOkMsg("Listing created. Add photos or a file, then publish.");
+        setOkMsg(t("marketplace.listingCreated"));
       }
       loadMyListings().catch(() => {});
     } catch (e) {
@@ -161,7 +163,7 @@ export default function MarketplaceSellPage() {
         body: { ...form, publish: true },
       });
       setListing(data.listing);
-      setOkMsg("Published! Buyers can see it in the marketplace.");
+      setOkMsg(t("marketplace.publishedSuccess"));
       loadMyListings().catch(() => {});
     } catch (e) {
       setErr(e.message);
@@ -171,13 +173,13 @@ export default function MarketplaceSellPage() {
   }
 
   async function removeListing(id) {
-    if (!window.confirm("Remove this listing from the marketplace?")) return;
+    if (!window.confirm(t("marketplace.removeConfirm"))) return;
     try {
       await apiJson(`/api/marketplace/listings/${id}`, {
         method: "PATCH",
         body: { remove: true },
       });
-      setOkMsg("Listing removed.");
+      setOkMsg(t("marketplace.listingRemoved"));
       loadMyListings();
     } catch (e) {
       setErr(e.message);
@@ -196,7 +198,7 @@ export default function MarketplaceSellPage() {
           payoutAccountNumber: bankForm.accountNumber,
         },
       });
-      setOkMsg("Bank details saved.");
+      setOkMsg(t("marketplace.bankSaved"));
       await loadWallet();
     } catch (e) {
       setErr(e.message);
@@ -213,7 +215,7 @@ export default function MarketplaceSellPage() {
         method: "POST",
         body: { amount: withdrawAmount },
       });
-      setOkMsg("Withdrawal requested. Staff will transfer to your bank soon.");
+      setOkMsg(t("marketplace.withdrawalRequested"));
       setWithdrawAmount("");
       await loadWallet();
     } catch (e) {
@@ -225,7 +227,7 @@ export default function MarketplaceSellPage() {
 
   async function uploadPhoto(file) {
     if (!listing?.id) {
-      setErr("Save draft first, then add photos.");
+      setErr(t("marketplace.saveDraftFirstPhotos"));
       return;
     }
     const fd = new FormData();
@@ -243,15 +245,15 @@ export default function MarketplaceSellPage() {
       data = {};
     }
     if (!res.ok) {
-      throw new Error(data.error || friendlyNonJsonApiMessage(raw) || "Photo upload failed");
+      throw new Error(data.error || friendlyNonJsonApiMessage(raw) || t("marketplace.photoUploadFailed"));
     }
     setListing(data.listing);
-    setOkMsg("Photo added.");
+    setOkMsg(t("marketplace.photoAdded"));
   }
 
   async function uploadDigital(file) {
     if (!listing?.id) {
-      setErr("Save draft first, then upload your file.");
+      setErr(t("marketplace.saveDraftFirstFile"));
       return;
     }
     const fd = new FormData();
@@ -269,16 +271,16 @@ export default function MarketplaceSellPage() {
       data = {};
     }
     if (!res.ok) {
-      throw new Error(data.error || friendlyNonJsonApiMessage(raw) || "File upload failed");
+      throw new Error(data.error || friendlyNonJsonApiMessage(raw) || t("marketplace.fileUploadFailed"));
     }
     setListing(data.listing);
-    setOkMsg("Digital file uploaded.");
+    setOkMsg(t("marketplace.digitalUploaded"));
   }
 
   const priceHint =
     user?.role === "student"
-      ? `Max ${meta?.studentMaxPriceLabel || "RM50"} for student sellers. Min RM2.`
-      : "Min RM2. Educators can set any price.";
+      ? t("marketplace.priceHintStudent", { max: meta?.studentMaxPriceLabel || "RM50" })
+      : t("marketplace.priceHintEducator");
 
   const feePct = meta?.platformFeePercent ?? 10;
 
@@ -286,9 +288,9 @@ export default function MarketplaceSellPage() {
     <div>
       <div className="user-page-intro">
         <p style={{ margin: "0 0 0.35rem", fontSize: "0.86rem" }}>
-          <Link to="/marketplace">← Marketplace</Link>
+          <Link to="/marketplace">{t("marketplace.backToMarketplace")}</Link>
         </p>
-        <h1>Sell study materials</h1>
+        <h1>{t("marketplace.sellTitle")}</h1>
         <p style={{ margin: 0, color: "#475569" }}>{priceHint}</p>
       </div>
 
@@ -299,7 +301,7 @@ export default function MarketplaceSellPage() {
           className={tab === "create" ? "marketplace-tab active" : "marketplace-tab"}
           onClick={() => switchTab("create")}
         >
-          {editId ? "Edit listing" : "New listing"}
+          {editId ? t("marketplace.tabEdit") : t("marketplace.tabNew")}
         </button>
         <button
           type="button"
@@ -307,7 +309,7 @@ export default function MarketplaceSellPage() {
           className={tab === "listings" ? "marketplace-tab active" : "marketplace-tab"}
           onClick={() => switchTab("listings")}
         >
-          My listings
+          {t("marketplace.tabMyListings")}
         </button>
         <button
           type="button"
@@ -315,14 +317,14 @@ export default function MarketplaceSellPage() {
           className={tab === "payouts" ? "marketplace-tab active" : "marketplace-tab"}
           onClick={() => switchTab("payouts")}
         >
-          Payouts
+          {t("marketplace.tabPayouts")}
         </button>
       </div>
 
       {tab === "listings" && (
         <section className="section-block">
           {myListings.length === 0 ? (
-            <p className="field-hint">No listings yet. Create one under New listing.</p>
+            <p className="field-hint">{t("marketplace.noListingsYet")}</p>
           ) : (
             <ul className="marketplace-orders-list">
               {myListings.map((L) => (
@@ -331,7 +333,7 @@ export default function MarketplaceSellPage() {
                     <strong>{L.title}</strong>
                     <span className="field-hint">
                       {" "}
-                      · {L.priceLabel} · {statusBadge(L.status)}
+                      · {L.priceLabel} · {statusBadge(L.status, t)}
                     </span>
                   </div>
                   <div className="marketplace-order-actions">
@@ -340,12 +342,12 @@ export default function MarketplaceSellPage() {
                         to={`/marketplace/sell?edit=${encodeURIComponent(L.id)}`}
                         className="btn btn-secondary"
                       >
-                        Edit
+                        {t("marketplace.edit")}
                       </Link>
                     )}
                     {L.status === "active" && (
                       <Link to={`/marketplace/${encodeURIComponent(L.id)}`} className="btn btn-secondary">
-                        View
+                        {t("marketplace.view")}
                       </Link>
                     )}
                     {L.status !== "sold" && L.status !== "removed" && (
@@ -354,7 +356,7 @@ export default function MarketplaceSellPage() {
                         className="btn btn-secondary"
                         onClick={() => removeListing(L.id)}
                       >
-                        Remove
+                        {t("marketplace.remove")}
                       </button>
                     )}
                   </div>
@@ -367,11 +369,12 @@ export default function MarketplaceSellPage() {
 
       {tab === "payouts" && (
         <section className="section-block marketplace-wallet">
-          <h2 style={{ marginTop: 0 }}>Earnings wallet</h2>
+          <h2 style={{ marginTop: 0 }}>{t("marketplace.earningsWallet")}</h2>
           <p className="field-hint">
-            Course sales credit when a student pays. Marketplace items credit on sale. 1-on-1
-            tutoring credits when you mark a session complete ({feePct}% platform fee on all).
-            Withdraw to your bank from {balance?.minWithdrawalLabel || "RM20.00"}.
+            {t("marketplace.walletIntro", {
+              fee: feePct,
+              min: balance?.minWithdrawalLabel || "RM20.00",
+            })}
           </p>
           {balance && (
             <div className="marketplace-wallet-balance">
@@ -379,21 +382,21 @@ export default function MarketplaceSellPage() {
                 {balance.availableLabel}
               </p>
               <p className="field-hint" style={{ margin: "0.25rem 0 0" }}>
-                Available · Lifetime earned {balance.lifetimeEarnedLabel}
+                {t("marketplace.availableLifetime", { amount: balance.lifetimeEarnedLabel })}
               </p>
             </div>
           )}
 
-          <h3>Bank details</h3>
+          <h3>{t("marketplace.bankDetails")}</h3>
           {payoutBank.hasDetails && !bankForm.accountNumber && (
             <p className="field-hint">
-              On file: {payoutBank.bankName} · {payoutBank.accountHolder} · ****
+              {t("marketplace.bankOnFile")} {payoutBank.bankName} · {payoutBank.accountHolder} · ****
               {payoutBank.accountNumberLast4}
             </p>
           )}
           <div className="marketplace-sell-form">
             <label>
-              Bank name
+              {t("marketplace.bankName")}
               <input
                 className="input"
                 value={bankForm.bankName}
@@ -402,7 +405,7 @@ export default function MarketplaceSellPage() {
               />
             </label>
             <label>
-              Account holder name
+              {t("marketplace.accountHolder")}
               <input
                 className="input"
                 value={bankForm.accountHolder}
@@ -410,26 +413,26 @@ export default function MarketplaceSellPage() {
               />
             </label>
             <label>
-              Account number
+              {t("marketplace.accountNumber")}
               <input
                 className="input"
                 inputMode="numeric"
                 value={bankForm.accountNumber}
                 onChange={(e) => setBankForm((f) => ({ ...f, accountNumber: e.target.value }))}
-                placeholder={payoutBank.accountNumberLast4 ? "Enter full number to update" : ""}
+                placeholder={payoutBank.accountNumberLast4 ? t("marketplace.accountNumberUpdatePlaceholder") : ""}
               />
             </label>
             <button type="button" className="btn btn-secondary" disabled={busy} onClick={saveBankDetails}>
-              Save bank details
+              {t("marketplace.saveBankDetails")}
             </button>
           </div>
 
-          <h3>Request withdrawal</h3>
+          <h3>{t("marketplace.requestWithdrawal")}</h3>
           <div className="marketplace-sell-actions">
             <input
               className="input"
               inputMode="decimal"
-              placeholder="Amount (RM)"
+              placeholder={t("marketplace.withdrawAmountPlaceholder")}
               value={withdrawAmount}
               onChange={(e) => setWithdrawAmount(e.target.value)}
               style={{ maxWidth: "160px" }}
@@ -440,16 +443,16 @@ export default function MarketplaceSellPage() {
               disabled={busy || !payoutBank.hasDetails}
               onClick={requestWithdrawal}
             >
-              Withdraw
+              {t("marketplace.withdraw")}
             </button>
           </div>
           {!payoutBank.hasDetails && (
-            <p className="field-hint">Save bank details before requesting a withdrawal.</p>
+            <p className="field-hint">{t("marketplace.saveBankBeforeWithdraw")}</p>
           )}
 
           {withdrawals.length > 0 && (
             <>
-              <h3>Withdrawal requests</h3>
+              <h3>{t("marketplace.withdrawalRequests")}</h3>
               <ul className="marketplace-orders-list">
                 {withdrawals.map((w) => (
                   <li key={w.id} className="marketplace-order-row">
@@ -465,17 +468,17 @@ export default function MarketplaceSellPage() {
 
           {transactions.length > 0 && (
             <>
-              <h3>Recent activity</h3>
+              <h3>{t("marketplace.recentActivity")}</h3>
               <ul className="marketplace-orders-list">
-                {transactions.map((t) => (
-                  <li key={t.id} className="marketplace-order-row">
+                {transactions.map((tx) => (
+                  <li key={tx.id} className="marketplace-order-row">
                     <span>
-                      {t.description || t.type} ·{" "}
-                      {t.amountCents >= 0 ? "+" : "−"}
-                      {t.amountLabel}
+                      {tx.description || tx.type} ·{" "}
+                      {tx.amountCents >= 0 ? "+" : "−"}
+                      {tx.amountLabel}
                     </span>
                     <span className="field-hint">
-                      {t.createdAt ? new Date(t.createdAt).toLocaleString() : ""}
+                      {tx.createdAt ? new Date(tx.createdAt).toLocaleString() : ""}
                     </span>
                   </li>
                 ))}
@@ -494,20 +497,20 @@ export default function MarketplaceSellPage() {
           }}
         >
           <label>
-            Type
+            {t("marketplace.type")}
             <select
               className="input"
               value={form.itemType}
               onChange={(e) => setField("itemType", e.target.value)}
               disabled={Boolean(listing?.status === "sold")}
             >
-              <option value="physical">Physical (pickup)</option>
-              <option value="digital">Digital (PDF / ZIP download)</option>
+              <option value="physical">{t("marketplace.physicalType")}</option>
+              <option value="digital">{t("marketplace.digitalType")}</option>
             </select>
           </label>
 
           <label>
-            Category
+            {t("marketplace.category")}
             <select
               className="input"
               value={form.category}
@@ -522,7 +525,7 @@ export default function MarketplaceSellPage() {
           </label>
 
           <label>
-            Title
+            {t("marketplace.titleLabel")}
             <input
               className="input"
               required
@@ -533,19 +536,19 @@ export default function MarketplaceSellPage() {
           </label>
 
           <label>
-            Price (RM)
+            {t("marketplace.priceRm")}
             <input
               className="input"
               required
               inputMode="decimal"
-              placeholder="e.g. 15.00"
+              placeholder={t("marketplace.pricePlaceholder")}
               value={form.price}
               onChange={(e) => setField("price", e.target.value)}
             />
           </label>
 
           <label>
-            Subject
+            {t("marketplace.subject")}
             <input
               className="input"
               value={form.subject}
@@ -555,7 +558,7 @@ export default function MarketplaceSellPage() {
           </label>
 
           <label>
-            Form / level
+            {t("marketplace.formLevel")}
             <input
               className="input"
               value={form.formLevel}
@@ -565,7 +568,7 @@ export default function MarketplaceSellPage() {
           </label>
 
           <label>
-            Description
+            {t("marketplace.description")}
             <textarea
               className="input"
               rows={4}
@@ -577,16 +580,16 @@ export default function MarketplaceSellPage() {
           {form.itemType === "physical" && (
             <>
               <label>
-                Condition
+                {t("marketplace.condition")}
                 <input
                   className="input"
                   value={form.condition}
                   onChange={(e) => setField("condition", e.target.value)}
-                  placeholder="Good, light wear on cover…"
+                  placeholder={t("marketplace.conditionPlaceholder")}
                 />
               </label>
               <label>
-                Pickup area
+                {t("marketplace.pickupArea")}
                 <input
                   className="input"
                   required
@@ -596,7 +599,7 @@ export default function MarketplaceSellPage() {
                 />
               </label>
               <label>
-                Pickup notes
+                {t("marketplace.pickupNotes")}
                 <textarea
                   className="input"
                   rows={2}
@@ -609,7 +612,7 @@ export default function MarketplaceSellPage() {
 
           <div className="marketplace-upload-row">
             <label>
-              Photos (physical items, up to 4)
+              {t("marketplace.photos")}
               <input
                 type="file"
                 accept="image/jpeg,image/png,image/webp"
@@ -622,7 +625,7 @@ export default function MarketplaceSellPage() {
             </label>
             {form.itemType === "digital" && (
               <label>
-                Digital file (PDF or ZIP)
+                {t("marketplace.digitalFile")}
                 <input
                   type="file"
                   accept=".pdf,.zip,application/pdf,application/zip"
@@ -645,16 +648,16 @@ export default function MarketplaceSellPage() {
           )}
           {listing?.hasDigitalFile && (
             <p className="field-hint">
-              Digital file attached ({listing.digitalFileName || "file"})
+              {t("marketplace.digitalAttached", { name: listing.digitalFileName || "file" })}
             </p>
           )}
 
           <div className="marketplace-sell-actions">
             <button type="submit" className="btn btn-secondary" disabled={busy}>
-              Save draft
+              {t("marketplace.saveDraft")}
             </button>
             <button type="button" className="btn btn-primary" disabled={busy} onClick={publish}>
-              Publish
+              {t("marketplace.publish")}
             </button>
           </div>
         </form>

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { apiJson } from "../api.js";
 import { useAuth } from "../context/AuthContext.jsx";
+import { useI18n } from "../i18n/I18nContext.jsx";
 
 function formatWhen(iso) {
   if (!iso) return "—";
@@ -10,19 +11,9 @@ function formatWhen(iso) {
   return d.toLocaleString();
 }
 
-function statusLabel(status) {
-  const map = {
-    paid: "Paid — tutor to accept",
-    accepted: "Scheduled",
-    completed: "Completed",
-    declined: "Declined (refund if paid)",
-    cancelled: "Cancelled",
-  };
-  return map[status] || status;
-}
-
 export default function MyBookingsPage() {
   const { user } = useAuth();
+  const { t } = useI18n();
   const [searchParams, setSearchParams] = useSearchParams();
   const [bookings, setBookings] = useState([]);
   const [err, setErr] = useState("");
@@ -33,6 +24,20 @@ export default function MyBookingsPage() {
 
   const isEducator = user?.role === "educator";
 
+  const statusLabel = useCallback(
+    (status) => {
+      const map = {
+        paid: t("bookings.statusPaid"),
+        accepted: t("bookings.statusAccepted"),
+        completed: t("bookings.statusCompleted"),
+        declined: t("bookings.statusDeclined"),
+        cancelled: t("bookings.statusCancelled"),
+      };
+      return map[status] || status;
+    },
+    [t]
+  );
+
   const load = useCallback(async () => {
     setLoading(true);
     setErr("");
@@ -40,12 +45,12 @@ export default function MyBookingsPage() {
       const data = await apiJson("/api/tutoring/bookings");
       setBookings(Array.isArray(data.bookings) ? data.bookings : []);
     } catch (e) {
-      setErr(e.message || "Could not load bookings");
+      setErr(e.message || t("bookings.loadError"));
       setBookings([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     load();
@@ -67,7 +72,7 @@ export default function MyBookingsPage() {
         }
         if (!cancelled) {
           await load();
-          setOkMsg("Payment confirmed. Your tutor will accept the session soon.");
+          setOkMsg(t("bookings.paymentConfirmed"));
           const next = new URLSearchParams(searchParams);
           next.delete("payment");
           next.delete("session_id");
@@ -76,13 +81,13 @@ export default function MyBookingsPage() {
           setSearchParams(next, { replace: true });
         }
       } catch (e) {
-        if (!cancelled) setErr(e.message || "Could not confirm payment yet.");
+        if (!cancelled) setErr(e.message || t("bookings.confirmPaymentError"));
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [load, searchParams, setSearchParams, user]);
+  }, [load, searchParams, setSearchParams, t, user]);
 
   async function tutorAction(id, action) {
     setBusyId(id);
@@ -92,9 +97,9 @@ export default function MyBookingsPage() {
         method: "PATCH",
       });
       await load();
-      setOkMsg(`Booking updated.`);
+      setOkMsg(t("bookings.bookingUpdated"));
     } catch (e) {
-      setErr(e.message || "Action failed");
+      setErr(e.message || t("bookings.actionFailed"));
     } finally {
       setBusyId("");
     }
@@ -105,7 +110,7 @@ export default function MyBookingsPage() {
     const rating = Number.parseInt(String(draft.rating ?? ""), 10);
     const comment = String(draft.comment || "").trim();
     if (!Number.isFinite(rating) || rating < 1 || rating > 5) {
-      setErr("Choose a rating from 1 to 5 stars.");
+      setErr(t("bookings.ratingRequired"));
       return;
     }
     setBusyId(bookingId);
@@ -116,9 +121,9 @@ export default function MyBookingsPage() {
         body: { rating, comment },
       });
       await load();
-      setOkMsg("Thank you — your review was saved.");
+      setOkMsg(t("bookings.reviewSaved"));
     } catch (e) {
-      setErr(e.message || "Could not save review");
+      setErr(e.message || t("bookings.reviewSaveError"));
     } finally {
       setBusyId("");
     }
@@ -127,23 +132,21 @@ export default function MyBookingsPage() {
   return (
     <div>
       <div className="user-page-intro">
-        <h1>{isEducator ? "1-on-1 bookings" : "My tutoring bookings"}</h1>
+        <h1>{isEducator ? t("bookings.titleEducator") : t("bookings.titleStudent")}</h1>
         <p style={{ margin: 0, color: "#475569" }}>
-          {isEducator
-            ? "Students who hire you for live 1-on-1 sessions appear here. Accept paid bookings, then mark complete after the session."
-            : "Book tutors for homeschool-style 1-on-1 help. Pay securely with Stripe, then leave feedback after the session."}
+          {isEducator ? t("bookings.introEducator") : t("bookings.introStudent")}
         </p>
       </div>
 
       {!isEducator && (
         <p style={{ marginBottom: "1rem" }}>
-          <Link to="/browse">Browse tutors</Link>
+          <Link to="/browse">{t("bookings.browseTutors")}</Link>
           {" · "}
-          <Link to="/tutoring">Find 1-on-1 tutors</Link>
+          <Link to="/tutoring">{t("bookings.findTutors")}</Link>
         </p>
       )}
 
-      {loading && <p className="field-hint">Loading…</p>}
+      {loading && <p className="field-hint">{t("common.loading")}</p>}
       {okMsg && (
         <p className="form-success" role="status">
           {okMsg}
@@ -156,7 +159,7 @@ export default function MyBookingsPage() {
       )}
 
       {!loading && bookings.length === 0 && (
-        <p className="field-hint">No bookings yet.</p>
+        <p className="field-hint">{t("bookings.empty")}</p>
       )}
 
       <ul className="booking-list">
@@ -173,11 +176,11 @@ export default function MyBookingsPage() {
               {formatWhen(b.scheduledStart)} → {formatWhen(b.scheduledEnd)} ({b.hours}h)
             </p>
             <p className="field-hint" style={{ margin: 0 }}>
-              {b.amountLabel} total · {b.hourlyRateLabel}/hr
+              {t("bookings.totalPerHour", { amount: b.amountLabel, rate: b.hourlyRateLabel })}
             </p>
             {b.studentMessage ? (
               <p className="booking-message">
-                <em>Message:</em> {b.studentMessage}
+                <em>{t("bookings.messageLabel")}</em> {b.studentMessage}
               </p>
             ) : null}
 
@@ -190,7 +193,7 @@ export default function MyBookingsPage() {
                     disabled={busyId === b.id}
                     onClick={() => tutorAction(b.id, "accept")}
                   >
-                    Accept
+                    {t("bookings.accept")}
                   </button>
                   <button
                     type="button"
@@ -198,7 +201,7 @@ export default function MyBookingsPage() {
                     disabled={busyId === b.id}
                     onClick={() => tutorAction(b.id, "decline")}
                   >
-                    Decline
+                    {t("bookings.decline")}
                   </button>
                 </>
               )}
@@ -209,13 +212,13 @@ export default function MyBookingsPage() {
                   disabled={busyId === b.id}
                   onClick={() => tutorAction(b.id, "complete")}
                 >
-                  Mark session complete
+                  {t("bookings.markComplete")}
                 </button>
               )}
               {!isEducator && b.status === "completed" && !b.myReview && (
                 <div className="booking-review-form">
                   <label>
-                    Your rating (1–5)
+                    {t("bookings.yourRating")}
                     <select
                       value={reviewDraft[b.id]?.rating ?? ""}
                       onChange={(e) =>
@@ -225,16 +228,16 @@ export default function MyBookingsPage() {
                         }))
                       }
                     >
-                      <option value="">Choose…</option>
+                      <option value="">{t("bookings.chooseRating")}</option>
                       {[5, 4, 3, 2, 1].map((n) => (
                         <option key={n} value={n}>
-                          {n} star{n === 1 ? "" : "s"}
+                          {n === 1 ? t("bookings.star", { count: n }) : t("bookings.stars", { count: n })}
                         </option>
                       ))}
                     </select>
                   </label>
                   <label>
-                    Feedback (optional)
+                    {t("bookings.feedbackOptional")}
                     <textarea
                       rows={3}
                       maxLength={2000}
@@ -245,7 +248,7 @@ export default function MyBookingsPage() {
                           [b.id]: { ...prev[b.id], comment: e.target.value },
                         }))
                       }
-                      placeholder="How was the session?"
+                      placeholder={t("bookings.feedbackPlaceholder")}
                     />
                   </label>
                   <button
@@ -254,18 +257,20 @@ export default function MyBookingsPage() {
                     disabled={busyId === b.id}
                     onClick={() => submitReview(b.id)}
                   >
-                    Submit review
+                    {t("bookings.submitReview")}
                   </button>
                 </div>
               )}
               {!isEducator && b.myReview && (
                 <p className="field-hint">
-                  You rated this session {b.myReview.rating}/5
+                  {t("bookings.youRated", { rating: b.myReview.rating })}
                   {b.myReview.comment ? `: “${b.myReview.comment}”` : "."}
                 </p>
               )}
               {!isEducator && (
-                <Link to={`/tutor/${encodeURIComponent(b.tutorId)}`}>View tutor profile</Link>
+                <Link to={`/tutor/${encodeURIComponent(b.tutorId)}`}>
+                  {t("bookings.viewTutorProfile")}
+                </Link>
               )}
             </div>
           </li>

@@ -5,6 +5,8 @@ import { isLikelySchoolEmail } from "../utils/emailValidation.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { MALAYSIA_SCHOOLS, STUDENT_FORM_LEVELS } from "../../shared/studentOptions.js";
 import { formatPersonNameInput, normalizePersonName } from "../../shared/personName.js";
+import { useI18n } from "../i18n/I18nContext.jsx";
+import LanguageSwitcher from "../components/LanguageSwitcher.jsx";
 
 const SUBJECTS = [
   ["", "Choose one subject"],
@@ -33,6 +35,7 @@ function passwordStrength(value) {
 export default function RegisterPage() {
   const navigate = useNavigate();
   const { register } = useAuth();
+  const { t } = useI18n();
   const [role, setRole] = useState("student");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -63,18 +66,18 @@ export default function RegisterPage() {
       !password ||
       !confirmPassword
     ) {
-      setStatus({ text: "Please complete all registration fields.", color: "#b91c1c" });
+      setStatus({ text: t("auth.completeFields"), color: "#b91c1c" });
       return;
     }
 
     if (role === "student" && !schoolName.trim()) {
-      setStatus({ text: "Please select your school.", color: "#b91c1c" });
+      setStatus({ text: t("auth.selectSchool"), color: "#b91c1c" });
       return;
     }
 
     if (role === "educator" && !educatorInstitution.trim()) {
       setStatus({
-        text: "Please enter your school or institution.",
+        text: t("auth.enterInstitution"),
         color: "#b91c1c",
       });
       return;
@@ -82,20 +85,20 @@ export default function RegisterPage() {
 
     if (!terms) {
       setStatus({
-        text: "Please accept the Terms and Privacy Policy.",
+        text: t("auth.acceptTerms"),
         color: "#b91c1c",
       });
       return;
     }
 
     if (password !== confirmPassword) {
-      setStatus({ text: "Passwords do not match.", color: "#b91c1c" });
+      setStatus({ text: t("auth.passwordsMismatch"), color: "#b91c1c" });
       return;
     }
 
     if (password.length < 8) {
       setStatus({
-        text: "Password must be at least 8 characters.",
+        text: t("auth.passwordMinLength"),
         color: "#b91c1c",
       });
       return;
@@ -103,7 +106,7 @@ export default function RegisterPage() {
 
     if (role === "student" && !isLikelySchoolEmail(email)) {
       setStatus({
-        text: "Students must use a school email (not Gmail, Yahoo, Hotmail, etc.).",
+        text: t("auth.schoolEmailRequired"),
         color: "#b91c1c",
       });
       return;
@@ -133,16 +136,15 @@ export default function RegisterPage() {
       await register(payload);
       if (role === "educator") {
         setStatus({
-          text:
-            "Account created. You are signed in — teaching tools stay locked until verification.",
+          text: t("auth.accountCreatedEducator"),
           color: "#15803d",
         });
       } else {
-        setStatus({ text: "Account created. Redirecting…", color: "#15803d" });
+        setStatus({ text: t("auth.accountCreatedStudent"), color: "#15803d" });
       }
       window.setTimeout(() => navigate("/browse", { replace: true }), 800);
     } catch (err) {
-      setStatus({ text: err.message || "Registration failed", color: "#b91c1c" });
+      setStatus({ text: err.message || t("auth.registrationFailed"), color: "#b91c1c" });
     } finally {
       setBusy(false);
     }
@@ -173,14 +175,15 @@ export default function RegisterPage() {
             </span>
           </Link>
           <nav className="auth-topnav" aria-label="Primary">
-            <Link to="/">Home</Link>
-            <Link to="/browse">Browse</Link>
-            <a href="#">About</a>
-            <a href="#">Contact</a>
+            <Link to="/">{t("common.home")}</Link>
+            <Link to="/browse">{t("common.browse")}</Link>
+            <a href="#">{t("common.about")}</a>
+            <a href="#">{t("common.contact")}</a>
           </nav>
           <div className="auth-topbar-actions">
+            <LanguageSwitcher />
             <Link className="auth-link" to="/login">
-              Log In
+              {t("common.logIn")}
             </Link>
           </div>
         </div>
@@ -193,7 +196,7 @@ export default function RegisterPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.05, duration: 0.35 }}
         >
-          Sign Up
+          {t("auth.signUpTitle")}
         </motion.h1>
 
         <motion.section
@@ -202,11 +205,7 @@ export default function RegisterPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
         >
-          <p className="subtext subtext--tight">
-            Choose your account type. Students use a school email; educators can
-            use school or personal email. Teaching features unlock after
-            verification.
-          </p>
+          <p className="subtext subtext--tight">{t("auth.registerIntro")}</p>
 
           <div className="role-tabs" role="tablist" aria-label="Account type">
             <button
@@ -217,7 +216,7 @@ export default function RegisterPage() {
               onClick={() => setRole("student")}
             >
               <span className="tab-radio" aria-hidden="true" />
-              Student
+              {t("auth.student")}
             </button>
             <button
               type="button"
@@ -227,13 +226,13 @@ export default function RegisterPage() {
               onClick={() => setRole("educator")}
             >
               <span className="tab-icon-screen" aria-hidden="true" />
-              Educator
+              {t("auth.educator")}
             </button>
           </div>
 
           <form id="registerForm" onSubmit={onSubmit} noValidate>
             <div className="field">
-              <label htmlFor="fullName">Full Name</label>
+              <label htmlFor="fullName">{t("auth.fullName")}</label>
               <div className="input-wrap">
                 <input
                   id="fullName"
@@ -241,7 +240,7 @@ export default function RegisterPage() {
                   value={fullName}
                   onChange={(e) => setFullName(formatPersonNameInput(e.target.value))}
                   type="text"
-                  placeholder="AHMAD BIN ALI"
+                  placeholder={t("auth.fullNamePlaceholder")}
                   autoComplete="name"
                   autoCapitalize="characters"
                   spellCheck={false}
@@ -249,11 +248,11 @@ export default function RegisterPage() {
                   required
                 />
               </div>
-              <p className="field-hint">Enter your name in capital letters (as on your school record).</p>
+              <p className="field-hint">{t("auth.fullNameHint")}</p>
             </div>
 
             <div className="field">
-              <label htmlFor="regEmail">Email Address</label>
+              <label htmlFor="regEmail">{t("auth.emailAddress")}</label>
               <div className="input-wrap input-wrap--has-trail">
                 <input
                   id="regEmail"
@@ -280,8 +279,7 @@ export default function RegisterPage() {
                     exit={{ opacity: 0, height: 0 }}
                     transition={{ duration: 0.2 }}
                   >
-                    Use your official school email (e.g.{" "}
-                    <code>@moe-dl.edu.my</code> or your school domain).
+                    {t("auth.schoolEmailHint")}
                   </motion.p>
                 ) : (
                   <motion.p
@@ -293,15 +291,14 @@ export default function RegisterPage() {
                     exit={{ opacity: 0, height: 0 }}
                     transition={{ duration: 0.2 }}
                   >
-                    School or personal email is fine. We may ask for proof of
-                    teaching during verification.
+                    {t("auth.educatorEmailHint")}
                   </motion.p>
                 )}
               </AnimatePresence>
             </div>
 
             <div className="field">
-              <label htmlFor="regPassword">Password</label>
+              <label htmlFor="regPassword">{t("auth.password")}</label>
               <div className="input-wrap input-wrap--has-trail">
                 <input
                   id="regPassword"
@@ -335,7 +332,7 @@ export default function RegisterPage() {
             </div>
 
             <div className="field">
-              <label htmlFor="regConfirmPassword">Confirm Password</label>
+              <label htmlFor="regConfirmPassword">{t("auth.confirmPassword")}</label>
               <div className="input-wrap input-wrap--has-trail">
                 <input
                   id="regConfirmPassword"
@@ -343,7 +340,7 @@ export default function RegisterPage() {
                   type={showPwd2 ? "text" : "password"}
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Confirm Password"
+                  placeholder={t("auth.confirmPassword")}
                   autoComplete="new-password"
                   minLength={8}
                   required
@@ -375,7 +372,7 @@ export default function RegisterPage() {
                   style={{ display: "grid", gap: "1rem" }}
                 >
                   <div className="field">
-                    <label htmlFor="schoolName">School Name</label>
+                    <label htmlFor="schoolName">{t("auth.schoolName")}</label>
                     <select
                       id="schoolName"
                       name="schoolName"
@@ -383,7 +380,7 @@ export default function RegisterPage() {
                       onChange={(e) => setSchoolName(e.target.value)}
                       required
                     >
-                      <option value="">Choose your school</option>
+                      <option value="">{t("auth.chooseSchool")}</option>
                       {MALAYSIA_SCHOOLS.map((name) => (
                         <option key={name} value={name}>
                           {name}
@@ -392,14 +389,14 @@ export default function RegisterPage() {
                     </select>
                   </div>
                   <div className="field">
-                    <label htmlFor="studentForm">Form / Level</label>
+                    <label htmlFor="studentForm">{t("auth.formLevel")}</label>
                     <select
                       id="studentForm"
                       name="studentForm"
                       value={studentForm}
                       onChange={(e) => setStudentForm(e.target.value)}
                     >
-                      <option value="">Select your level (optional)</option>
+                      <option value="">{t("auth.selectLevel")}</option>
                       {STUDENT_FORM_LEVELS.map((level) => (
                         <option key={level} value={level}>
                           {level}
@@ -408,7 +405,7 @@ export default function RegisterPage() {
                     </select>
                   </div>
                   <div className="field">
-                    <label htmlFor="studentSubject">Main Subject Focus</label>
+                    <label htmlFor="studentSubject">{t("auth.mainSubjectFocus")}</label>
                     <select
                       id="studentSubject"
                       name="studentSubject"
@@ -437,9 +434,7 @@ export default function RegisterPage() {
                   style={{ display: "grid", gap: "1rem" }}
                 >
                   <div className="field">
-                    <label htmlFor="educatorInstitution">
-                      School / Institution
-                    </label>
+                    <label htmlFor="educatorInstitution">{t("auth.institution")}</label>
                     <div className="input-wrap">
                       <input
                         id="educatorInstitution"
@@ -454,9 +449,7 @@ export default function RegisterPage() {
                     </div>
                   </div>
                   <div className="field">
-                    <label htmlFor="educatorSubject">
-                      Primary subject you teach
-                    </label>
+                    <label htmlFor="educatorSubject">{t("auth.primarySubject")}</label>
                     <select
                       id="educatorSubject"
                       name="educatorSubject"
@@ -472,7 +465,7 @@ export default function RegisterPage() {
                     </select>
                   </div>
                   <div className="field">
-                    <label htmlFor="educatorBio">Short bio (optional)</label>
+                    <label htmlFor="educatorBio">{t("auth.bio")}</label>
                     <textarea
                       id="educatorBio"
                       name="educatorBio"
@@ -516,7 +509,7 @@ export default function RegisterPage() {
               whileHover={{ scale: busy ? 1 : 1.01 }}
               whileTap={{ scale: busy ? 1 : 0.99 }}
             >
-              {busy ? "Creating account…" : "Sign Up"}
+              {busy ? t("auth.registering") : t("auth.signUpTitle")}
             </motion.button>
             <p
               className="status"
@@ -528,8 +521,8 @@ export default function RegisterPage() {
           </form>
 
           <p className="helper helper--center">
-            Already have an account?
-            <Link to="/login"> Log In</Link>
+            {t("auth.haveAccount")}
+            <Link to="/login"> {t("auth.signInLink")}</Link>
             <span className="helper-chevron" aria-hidden="true">
               ›
             </span>

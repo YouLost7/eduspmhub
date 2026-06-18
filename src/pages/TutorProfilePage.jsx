@@ -5,6 +5,7 @@ import { apiJson } from "../api.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { profilePhotoSrc } from "../lib/profilePhoto.js";
 import TutoringSlotPicker from "../components/TutoringSlotPicker.jsx";
+import { useI18n } from "../i18n/I18nContext.jsx";
 
 function formatWhen(iso) {
   if (!iso) return "";
@@ -16,6 +17,7 @@ function formatWhen(iso) {
 export default function TutorProfilePage() {
   const { tutorId } = useParams();
   const { user } = useAuth();
+  const { t } = useI18n();
   const [tutor, setTutor] = useState(null);
   const [courses, setCourses] = useState([]);
   const [reviews, setReviews] = useState([]);
@@ -43,11 +45,11 @@ export default function TutorProfilePage() {
       setCourses([]);
       setReviews([]);
       setAvailability([]);
-      setErr(e.message || "Could not load this tutor.");
+      setErr(e.message || t("tutor.loadError"));
     } finally {
       setLoading(false);
     }
-  }, [tutorId]);
+  }, [tutorId, t]);
 
   useEffect(() => {
     load();
@@ -71,7 +73,7 @@ export default function TutorProfilePage() {
     setBookingMsg({ text: "", ok: true });
     if (!canBook) return;
     if (!selectedSlotStart) {
-      setBookingMsg({ text: "Please choose an available time slot.", ok: false });
+      setBookingMsg({ text: t("tutor.chooseSlot"), ok: false });
       return;
     }
     setBookingBusy(true);
@@ -89,9 +91,9 @@ export default function TutorProfilePage() {
         window.location.assign(checkout.checkoutUrl);
         return;
       }
-      setBookingMsg({ text: "Session booked.", ok: true });
+      setBookingMsg({ text: t("tutor.sessionBooked"), ok: true });
     } catch (e2) {
-      setBookingMsg({ text: e2.message || "Could not book session", ok: false });
+      setBookingMsg({ text: e2.message || t("tutor.bookError"), ok: false });
     } finally {
       setBookingBusy(false);
     }
@@ -101,17 +103,17 @@ export default function TutorProfilePage() {
     <div>
       <div className="user-page-intro">
         <p style={{ margin: "0 0 0.35rem", fontSize: "0.86rem" }}>
-          <Link to="/browse">← Browse</Link>
+          <Link to="/browse">{t("tutor.backToBrowse")}</Link>
           {" · "}
-          <Link to="/tutoring">1-on-1 tutors</Link>
+          <Link to="/tutoring">{t("tutor.oneOnOneTutors")}</Link>
         </p>
-        <h1>Tutor profile</h1>
+        <h1>{t("tutor.title")}</h1>
         <p style={{ margin: 0, color: "#475569" }}>
-          Courses and live 1-on-1 hiring. Contact details stay private.
+          {t("tutor.intro")}
         </p>
       </div>
 
-      {loading && <p className="field-hint">Loading…</p>}
+      {loading && <p className="field-hint">{t("common.loading")}</p>}
       {err && (
         <p className="form-error" role="alert">
           {err}
@@ -150,9 +152,9 @@ export default function TutorProfilePage() {
               </p>
               <p className="tutor-profile-badges">
                 {tutor.verified ? (
-                  <span className="role-pill role-pill--edu">Verified on EduSPM Hub</span>
+                  <span className="role-pill role-pill--edu">{t("tutor.verifiedBadge")}</span>
                 ) : (
-                  <span className="role-pill">Verification pending</span>
+                  <span className="role-pill">{t("tutor.verificationPending")}</span>
                 )}
                 {tutor.offersOneToOne && tutor.hourlyRateLabel ? (
                   <span className="role-pill" style={{ marginLeft: "0.35rem" }}>
@@ -166,7 +168,7 @@ export default function TutorProfilePage() {
                 ) : null}
                 {isSelf ? (
                   <span className="role-pill" style={{ marginLeft: "0.35rem" }}>
-                    This is you
+                    {t("tutor.thisIsYou")}
                   </span>
                 ) : null}
               </p>
@@ -175,16 +177,16 @@ export default function TutorProfilePage() {
 
           {tutor.educatorBio?.trim() ? (
             <div className="tutor-profile-bio">
-              <h3>About</h3>
+              <h3>{t("tutor.about")}</h3>
               <div className="learn-body learn-body--pre">{tutor.educatorBio.trim()}</div>
             </div>
           ) : (
-            <p className="field-hint">This tutor has not added a public bio yet.</p>
+            <p className="field-hint">{t("tutor.noBio")}</p>
           )}
 
           {availability.length > 0 && (
             <section className="tutor-availability-section">
-              <h3>Weekly availability</h3>
+              <h3>{t("tutor.weeklyAvailability")}</h3>
               <ul className="tutor-availability-list">
                 {availability.map((s) => (
                   <li key={s.id}>
@@ -197,14 +199,11 @@ export default function TutorProfilePage() {
 
           {canBook && availability.length > 0 && (
             <section className="tutor-booking-panel section-block">
-              <h3>Book 1-on-1 session</h3>
-              <p className="field-hint">
-                Choose session length, then pick an open slot below. Payment is via Stripe;
-                refunds apply automatically if the tutor declines.
-              </p>
+              <h3>{t("tutor.bookSession")}</h3>
+              <p className="field-hint">{t("tutor.bookHint")}</p>
               <form onSubmit={requestBooking} className="tutor-booking-form">
                 <label>
-                  Session length (hours)
+                  {t("tutor.sessionLength")}
                   <select
                     value={hours}
                     onChange={(e) => setHours(e.target.value)}
@@ -212,7 +211,7 @@ export default function TutorProfilePage() {
                   >
                     {[0.5, 1, 1.5, 2, 3, 4].map((h) => (
                       <option key={h} value={h}>
-                        {h} hour{h === 1 ? "" : "s"}
+                        {h === 1 ? t("tutor.hour", { count: h }) : t("tutor.hours", { count: h })}
                       </option>
                     ))}
                   </select>
@@ -225,13 +224,13 @@ export default function TutorProfilePage() {
                   onSelect={setSelectedSlotStart}
                 />
                 <label>
-                  Message to tutor (optional)
+                  {t("tutor.messageToTutor")}
                   <textarea
                     rows={3}
                     maxLength={2000}
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
-                    placeholder="Topics you want to cover, Form 4/5, etc."
+                    placeholder={t("tutor.messagePlaceholder")}
                   />
                 </label>
                 {bookingMsg.text ? (
@@ -244,29 +243,27 @@ export default function TutorProfilePage() {
                   className="btn btn-primary"
                   disabled={bookingBusy || !selectedSlotStart}
                 >
-                  {bookingBusy ? "Redirecting to payment…" : "Book & pay with Stripe"}
+                  {bookingBusy ? t("tutor.redirectingPayment") : t("tutor.bookAndPay")}
                 </button>
               </form>
             </section>
           )}
 
           {isStudent && tutor.verified && !tutor.offersOneToOne && !isSelf && (
-            <p className="field-hint">This tutor is not offering live 1-on-1 sessions yet.</p>
+            <p className="field-hint">{t("tutor.notOfferingOneOnOne")}</p>
           )}
           {isStudent &&
             tutor.verified &&
             tutor.offersOneToOne &&
             availability.length === 0 &&
             !isSelf && (
-              <p className="field-hint">
-                This tutor has not published weekly availability yet.
-              </p>
+              <p className="field-hint">{t("tutor.noAvailability")}</p>
             )}
 
           <section className="tutor-profile-courses">
-            <h3>Published courses ({courses.length})</h3>
+            <h3>{t("tutor.publishedCourses", { count: courses.length })}</h3>
             {courses.length === 0 ? (
-              <p className="field-hint">No published listings yet.</p>
+              <p className="field-hint">{t("tutor.noPublishedListings")}</p>
             ) : (
               <ul className="tutor-profile-course-list">
                 {courses.map((c) => (
@@ -274,7 +271,8 @@ export default function TutorProfilePage() {
                     <Link to={`/browse?course=${encodeURIComponent(c.id)}`}>
                       <strong>{c.title}</strong>
                       <span className="field-hint" style={{ display: "block", marginTop: "0.15rem" }}>
-                        {c.subject} · {c.lessons} lesson{c.lessons === 1 ? "" : "s"} · {c.price}
+                        {c.subject} · {c.lessons}{" "}
+                        {c.lessons === 1 ? t("common.lesson") : t("common.lessons")} · {c.price}
                       </span>
                     </Link>
                   </li>
@@ -284,9 +282,9 @@ export default function TutorProfilePage() {
           </section>
 
           <section className="tutor-reviews-section">
-            <h3>Student feedback ({reviews.length})</h3>
+            <h3>{t("tutor.studentFeedback", { count: reviews.length })}</h3>
             {reviews.length === 0 ? (
-              <p className="field-hint">No reviews yet.</p>
+              <p className="field-hint">{t("tutor.noReviews")}</p>
             ) : (
               <ul className="tutor-review-list">
                 {reviews.map((r) => (
@@ -302,12 +300,13 @@ export default function TutorProfilePage() {
 
           {isSelf ? (
             <p className="field-hint" style={{ marginTop: "1rem" }}>
-              Set your hourly rate under <Link to="/profile">Profile</Link>. Manage bookings under{" "}
-              <Link to="/bookings">1-on-1 bookings</Link>.
+              {t("tutor.selfHintRate")} <Link to="/profile">{t("common.profile")}</Link>.{" "}
+              {t("tutor.selfHintBookings")}{" "}
+              <Link to="/bookings">{t("nav.oneOnOneBookings")}</Link>.
             </p>
           ) : isStudent ? (
             <p className="field-hint" style={{ marginTop: "1rem" }}>
-              <Link to="/bookings">View all your bookings</Link>
+              <Link to="/bookings">{t("tutor.viewAllBookings")}</Link>
             </p>
           ) : null}
         </motion.article>

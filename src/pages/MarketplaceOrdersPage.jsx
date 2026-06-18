@@ -1,21 +1,26 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { apiJson } from "../api.js";
-
-function statusLabel(status) {
-  const s = String(status || "");
-  if (s === "paid") return "Paid — awaiting pickup";
-  if (s === "seller_ready") return "Ready for pickup";
-  if (s === "completed") return "Completed";
-  return s;
-}
+import { useI18n } from "../i18n/I18nContext.jsx";
 
 export default function MarketplaceOrdersPage() {
+  const { t } = useI18n();
   const [searchParams, setSearchParams] = useSearchParams();
   const [orders, setOrders] = useState([]);
   const [err, setErr] = useState("");
   const [okMsg, setOkMsg] = useState("");
   const [loading, setLoading] = useState(true);
+
+  const statusLabel = useCallback(
+    (status) => {
+      const s = String(status || "");
+      if (s === "paid") return t("marketplace.orderStatusPaid");
+      if (s === "seller_ready") return t("marketplace.orderStatusReady");
+      if (s === "completed") return t("marketplace.orderStatusCompleted");
+      return s;
+    },
+    [t]
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -25,11 +30,11 @@ export default function MarketplaceOrdersPage() {
       setOrders(Array.isArray(data.orders) ? data.orders : []);
     } catch (e) {
       setOrders([]);
-      setErr(e.message || "Could not load orders");
+      setErr(e.message || t("marketplace.ordersLoadError"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     load();
@@ -43,7 +48,7 @@ export default function MarketplaceOrdersPage() {
         body: { sessionId },
       })
         .then(() => {
-          setOkMsg("Payment confirmed.");
+          setOkMsg(t("marketplace.paymentConfirmed"));
           load();
         })
         .catch(() => load())
@@ -55,19 +60,19 @@ export default function MarketplaceOrdersPage() {
           setSearchParams(next, { replace: true });
         });
     } else if (searchParams.get("payment") === "success") {
-      setOkMsg("Purchase complete.");
+      setOkMsg(t("marketplace.purchaseComplete"));
       const next = new URLSearchParams(searchParams);
       next.delete("payment");
       next.delete("order");
       setSearchParams(next, { replace: true });
       load();
     }
-  }, [searchParams, setSearchParams, load]);
+  }, [searchParams, setSearchParams, load, t]);
 
   async function markReady(orderId) {
     try {
       await apiJson(`/api/marketplace/orders/${orderId}/seller-ready`, { method: "POST" });
-      setOkMsg("Marked ready for pickup.");
+      setOkMsg(t("marketplace.markedReady"));
       load();
     } catch (e) {
       setErr(e.message);
@@ -77,7 +82,7 @@ export default function MarketplaceOrdersPage() {
   async function confirmReceived(orderId) {
     try {
       await apiJson(`/api/marketplace/orders/${orderId}/confirm`, { method: "POST" });
-      setOkMsg("Thanks — order completed.");
+      setOkMsg(t("marketplace.orderCompleted"));
       load();
     } catch (e) {
       setErr(e.message);
@@ -95,12 +100,12 @@ export default function MarketplaceOrdersPage() {
     <div>
       <div className="user-page-intro">
         <p style={{ margin: "0 0 0.35rem", fontSize: "0.86rem" }}>
-          <Link to="/marketplace">← Marketplace</Link>
+          <Link to="/marketplace">{t("marketplace.backToMarketplace")}</Link>
         </p>
-        <h1>Marketplace orders</h1>
+        <h1>{t("marketplace.ordersTitle")}</h1>
       </div>
 
-      {loading && <p className="field-hint">Loading…</p>}
+      {loading && <p className="field-hint">{t("common.loading")}</p>}
       {err && (
         <p className="form-error" role="alert">
           {err}
@@ -109,8 +114,8 @@ export default function MarketplaceOrdersPage() {
       {okMsg && <p className="form-ok">{okMsg}</p>}
 
       <section className="section-block">
-        <h2>My purchases</h2>
-        {purchases.length === 0 && <p className="field-hint">No purchases yet.</p>}
+        <h2>{t("marketplace.myPurchases")}</h2>
+        {purchases.length === 0 && <p className="field-hint">{t("marketplace.noPurchases")}</p>}
         <ul className="marketplace-orders-list">
           {purchases.map((o) => (
             <li key={o.id} className="marketplace-order-row">
@@ -118,18 +123,18 @@ export default function MarketplaceOrdersPage() {
                 <strong>{o.title}</strong>
                 <span className="field-hint"> · {o.amountLabel}</span>
                 <p className="field-hint" style={{ margin: "0.25rem 0 0" }}>
-                  {statusLabel(o.status)} · Seller: {o.sellerName}
+                  {statusLabel(o.status)} · {t("marketplace.sellerLabel")} {o.sellerName}
                 </p>
               </div>
               <div className="marketplace-order-actions">
                 {o.canDownload && (
                   <button type="button" className="btn btn-primary" onClick={() => download(o.id)}>
-                    Download
+                    {t("marketplace.download")}
                   </button>
                 )}
                 {o.canConfirmReceived && (
                   <button type="button" className="btn btn-secondary" onClick={() => confirmReceived(o.id)}>
-                    Confirm received
+                    {t("marketplace.confirmReceived")}
                   </button>
                 )}
               </div>
@@ -139,8 +144,8 @@ export default function MarketplaceOrdersPage() {
       </section>
 
       <section className="section-block" style={{ marginTop: "1rem" }}>
-        <h2>My sales</h2>
-        {sales.length === 0 && <p className="field-hint">No sales yet.</p>}
+        <h2>{t("marketplace.mySales")}</h2>
+        {sales.length === 0 && <p className="field-hint">{t("marketplace.noSales")}</p>}
         <ul className="marketplace-orders-list">
           {sales.map((o) => (
             <li key={o.id} className="marketplace-order-row">
@@ -148,12 +153,12 @@ export default function MarketplaceOrdersPage() {
                 <strong>{o.title}</strong>
                 <span className="field-hint"> · {o.amountLabel}</span>
                 <p className="field-hint" style={{ margin: "0.25rem 0 0" }}>
-                  {statusLabel(o.status)} · Buyer: {o.buyerName}
+                  {statusLabel(o.status)} · {t("marketplace.buyerLabel")} {o.buyerName}
                 </p>
               </div>
               {o.canMarkReady && (
                 <button type="button" className="btn btn-secondary" onClick={() => markReady(o.id)}>
-                  Ready for pickup
+                  {t("marketplace.readyForPickup")}
                 </button>
               )}
             </li>
@@ -162,7 +167,7 @@ export default function MarketplaceOrdersPage() {
       </section>
 
       <p style={{ marginTop: "1rem" }}>
-        <Link to="/marketplace/sell">Sell another item</Link>
+        <Link to="/marketplace/sell">{t("marketplace.sellAnother")}</Link>
       </p>
     </div>
   );

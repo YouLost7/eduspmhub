@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { Link, useSearchParams } from "react-router-dom";
 import { apiJson } from "../api.js";
 import { useAuth } from "../context/AuthContext.jsx";
+import { useI18n } from "../i18n/I18nContext.jsx";
 import EducatorMyTeaching from "../components/EducatorMyTeaching.jsx";
 import CourseProgressBar from "../components/CourseProgressBar.jsx";
 
@@ -18,6 +19,7 @@ function priceToCents(priceLike) {
 
 export default function MyCoursesPage() {
   const { user } = useAuth();
+  const { t } = useI18n();
   const [searchParams, setSearchParams] = useSearchParams();
   const [courses, setCourses] = useState([]);
   const [err, setErr] = useState("");
@@ -98,13 +100,10 @@ export default function MyCoursesPage() {
   return (
     <div>
       <div className="user-page-intro">
-        <h1>My courses</h1>
-        <p>
-          Everything you have enrolled in appears here. Open lessons to move your progress
-          forward.
-        </p>
+        <h1>{t("myCourses.title")}</h1>
+        <p>{t("myCourses.intro")}</p>
         <Link className="solid-btn" to="/browse">
-          Browse courses
+          {t("myCourses.browseCourses")}
         </Link>
       </div>
 
@@ -120,9 +119,9 @@ export default function MyCoursesPage() {
       )}
 
       <section className="section-block my-list">
-        <h2>Your enrolments</h2>
+        <h2>{t("myCourses.yourEnrolments")}</h2>
         {courses.length === 0 ? (
-          <p className="empty-list">No courses yet — browse and tap Enrol to add one.</p>
+          <p className="empty-list">{t("myCourses.empty")}</p>
         ) : (
           <ul className="enrol-list">
             {courses.map((c) => {
@@ -143,15 +142,15 @@ export default function MyCoursesPage() {
                     <span className="field-hint" style={{ display: "block", marginTop: "0.2rem" }}>
                       {c.source === "educator" && c.educatorId ? (
                         <>
-                          Tutor:{" "}
+                          {t("myCourses.tutor")}:{" "}
                           <Link to={`/tutor/${encodeURIComponent(c.educatorId)}`}>{c.educator}</Link>
                         </>
                       ) : (
-                        <>Tutor: {c.educator}</>
+                        <>{t("myCourses.tutor")}: {c.educator}</>
                       )}{" "}
                       · {c.price}
                       {" · "}
-                      <strong>{priceToCents(c.price) > 0 ? "Paid" : "Free"}</strong>
+                      <strong>{priceToCents(c.price) > 0 ? t("myCourses.paid") : t("myCourses.free")}</strong>
                     </span>
                     <CourseProgressBar
                       compact
@@ -161,7 +160,11 @@ export default function MyCoursesPage() {
                     />
                   </span>
                   <Link className="solid-btn" style={{ fontSize: "0.86rem" }} to={learnHref}>
-                    {progress.percent >= 100 ? "Review" : progress.percent > 0 ? "Continue" : "Open lessons"}
+                    {progress.percent >= 100
+                      ? t("myCourses.review")
+                      : progress.percent > 0
+                        ? t("myCourses.continue")
+                        : t("myCourses.openLessons")}
                   </Link>
                 </motion.li>
               );

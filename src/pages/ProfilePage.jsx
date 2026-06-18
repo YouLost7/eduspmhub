@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { friendlyNonJsonApiMessage, apiJson } from "../api.js";
 import { useAuth } from "../context/AuthContext.jsx";
+import { useI18n } from "../i18n/I18nContext.jsx";
 import { profilePhotoSrc } from "../lib/profilePhoto.js";
 import EducatorAvailability from "../components/EducatorAvailability.jsx";
 
@@ -18,12 +19,15 @@ function ProfileIdentityRow({ label, value }) {
 
 export default function ProfilePage() {
   const { user, updateProfile, refreshMe } = useAuth();
+  const { t } = useI18n();
   const [offersOneToOne, setOffersOneToOne] = useState(Boolean(user?.offersOneToOne));
+  const [educatorBio, setEducatorBio] = useState(user?.educatorBio || "");
   const [hourlyRate, setHourlyRate] = useState(() => {
     const c = Number(user?.hourlyRateCents) || 0;
     return c > 0 ? (c / 100).toFixed(2) : "";
   });
   const [status, setStatus] = useState({ text: "", ok: true });
+  const [bioStatus, setBioStatus] = useState({ text: "", ok: true });
   const [licenseFile, setLicenseFile] = useState(null);
   const [licenseBusy, setLicenseBusy] = useState(false);
   const [licenseStatus, setLicenseStatus] = useState({ text: "", ok: true });
@@ -38,9 +42,21 @@ export default function ProfilePage() {
   useEffect(() => {
     if (!user) return;
     setOffersOneToOne(Boolean(user.offersOneToOne));
+    setEducatorBio(user.educatorBio || "");
     const c = Number(user.hourlyRateCents) || 0;
     setHourlyRate(c > 0 ? (c / 100).toFixed(2) : "");
   }, [user]);
+
+  async function onSubmitBio(e) {
+    e.preventDefault();
+    setBioStatus({ text: "", ok: true });
+    try {
+      await updateProfile({ educatorBio });
+      setBioStatus({ text: t("profile.bioSaved"), ok: true });
+    } catch (err) {
+      setBioStatus({ text: err.message || t("profile.saveFailed"), ok: false });
+    }
+  }
 
   async function onSubmitTeachingSettings(e) {
     e.preventDefault();
@@ -50,9 +66,9 @@ export default function ProfilePage() {
         offersOneToOne,
         hourlyRate: offersOneToOne ? hourlyRate : "0",
       });
-      setStatus({ text: "Teaching settings saved.", ok: true });
+      setStatus({ text: t("profile.teachingSettingsSaved"), ok: true });
     } catch (err) {
-      setStatus({ text: err.message || "Save failed", ok: false });
+      setStatus({ text: err.message || t("profile.saveFailed"), ok: false });
     }
   }
 
@@ -173,23 +189,23 @@ export default function ProfilePage() {
   return (
     <div>
       <div className={`user-page-intro${isEducator ? " user-page-intro--educator" : ""}`}>
-        <h1>Profile</h1>
-        <p>Signed in as {user?.email}</p>
+        <h1>{t("profile.title")}</h1>
+        <p>{t("profile.signedInAs", { email: user?.email })}</p>
         {isEducator && (
           <p className="profile-role-line">
-            Role: <strong>Educator</strong>
+            {t("profile.roleEducator")}
             {user?.verified ? (
-              <span className="verify-ok"> · Verified</span>
+              <span className="verify-ok"> · {t("common.verified")}</span>
             ) : (
-              <span className="verify-pending"> · Verification pending</span>
+              <span className="verify-pending"> · {t("profile.verificationPending")}</span>
             )}
           </p>
         )}
         {isEducator && !user?.verified && (
           <p className="field-hint" style={{ marginTop: "0.35rem" }}>
             {user?.hasLicenseDocument
-              ? "Your certified licence is on file — we will confirm it before unlocking teaching tools."
-              : "Upload your certified educator licence below. We only verify tutors after reviewing this document."}
+              ? t("profile.licenceOnFile")
+              : t("profile.uploadLicenceHint")}
           </p>
         )}
       </div>
@@ -199,32 +215,54 @@ export default function ProfilePage() {
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
       >
-        <h2 style={{ marginTop: 0, fontSize: "1.1rem" }}>Account details</h2>
+        <h2 style={{ marginTop: 0, fontSize: "1.1rem" }}>{t("profile.accountDetails")}</h2>
         <p className="field-hint">
-          These details were set when you registered and cannot be changed here.
+          {isEducator ? t("profile.lockedEducator") : t("profile.lockedStudent")}
         </p>
         <dl className="profile-identity-list">
-          <ProfileIdentityRow label="Full name" value={user?.fullName} />
+          <ProfileIdentityRow label={t("profile.fullName")} value={user?.fullName} />
           {!isEducator ? (
             <>
-              <ProfileIdentityRow label="School" value={user?.schoolName} />
-              <ProfileIdentityRow label="Form / level" value={user?.studentForm} />
-              <ProfileIdentityRow label="Main subject" value={user?.studentSubject} />
+              <ProfileIdentityRow label={t("profile.school")} value={user?.schoolName} />
+              <ProfileIdentityRow label={t("profile.formLevel")} value={user?.studentForm} />
+              <ProfileIdentityRow label={t("profile.mainSubject")} value={user?.studentSubject} />
             </>
           ) : (
             <>
-              <ProfileIdentityRow label="Institution" value={user?.educatorInstitution} />
-              <ProfileIdentityRow label="Primary subject" value={user?.educatorSubject} />
-              {user?.educatorBio ? (
-                <div className="profile-identity-row profile-identity-row--bio">
-                  <dt>Bio</dt>
-                  <dd>{user.educatorBio}</dd>
-                </div>
-              ) : null}
+              <ProfileIdentityRow label={t("profile.institution")} value={user?.educatorInstitution} />
+              <ProfileIdentityRow label={t("profile.primarySubject")} value={user?.educatorSubject} />
             </>
           )}
         </dl>
       </motion.section>
+
+      {isEducator && (
+        <motion.form
+          className="profile-form section-block"
+          onSubmit={onSubmitBio}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <h2 style={{ marginTop: 0, fontSize: "1.1rem" }}>{t("profile.bioTitle")}</h2>
+          <p className="field-hint">{t("profile.bioHint")}</p>
+          <div className="field">
+            <label htmlFor="pf-bio">{t("profile.yourBio")}</label>
+            <textarea
+              id="pf-bio"
+              rows={4}
+              value={educatorBio}
+              onChange={(e) => setEducatorBio(e.target.value)}
+              placeholder={t("profile.bioPlaceholder")}
+            />
+          </div>
+          <button type="submit" className="solid-btn">
+            {t("profile.saveBio")}
+          </button>
+          {bioStatus.text && (
+            <p className={bioStatus.ok ? "form-success" : "form-error"}>{bioStatus.text}</p>
+          )}
+        </motion.form>
+      )}
 
       <motion.section
         className="profile-form section-block"
@@ -349,7 +387,7 @@ export default function ProfilePage() {
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
         >
-          <h2 style={{ marginTop: 0, fontSize: "1.1rem" }}>1-on-1 tutoring</h2>
+          <h2 style={{ marginTop: 0, fontSize: "1.1rem" }}>{t("profile.oneOnOneTutoring")}</h2>
           <p className="field-hint">
             You can turn live tutoring on or off and set your hourly rate here. Name, institution,
             and subject stay as registered.

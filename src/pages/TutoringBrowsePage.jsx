@@ -3,8 +3,10 @@ import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { apiJson } from "../api.js";
 import { profilePhotoSrc } from "../lib/profilePhoto.js";
+import { useI18n } from "../i18n/I18nContext.jsx";
 
 export default function TutoringBrowsePage() {
+  const { t } = useI18n();
   const [tutors, setTutors] = useState([]);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(true);
@@ -17,11 +19,11 @@ export default function TutoringBrowsePage() {
       setTutors(Array.isArray(data.tutors) ? data.tutors : []);
     } catch (e) {
       setTutors([]);
-      setErr(e.message || "Could not load tutors");
+      setErr(e.message || t("tutoring.loadError"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     load();
@@ -31,15 +33,15 @@ export default function TutoringBrowsePage() {
     <div>
       <div className="user-page-intro">
         <p style={{ margin: "0 0 0.35rem", fontSize: "0.86rem" }}>
-          <Link to="/browse">← Browse</Link>
+          <Link to="/browse">{t("tutoring.backToBrowse")}</Link>
         </p>
-        <h1>Hire a tutor (1-on-1)</h1>
+        <h1>{t("tutoring.title")}</h1>
         <p style={{ margin: 0, color: "#475569" }}>
-          Verified educators offering live homeschool-style sessions. Pay by the hour with Stripe.
+          {t("tutoring.intro")}
         </p>
       </div>
 
-      {loading && <p className="field-hint">Loading…</p>}
+      {loading && <p className="field-hint">{t("common.loading")}</p>}
       {err && (
         <p className="form-error" role="alert">
           {err}
@@ -47,45 +49,50 @@ export default function TutoringBrowsePage() {
       )}
 
       {!loading && tutors.length === 0 && (
-        <p className="field-hint">No tutors are offering 1-on-1 sessions yet.</p>
+        <p className="field-hint">{t("tutoring.empty")}</p>
       )}
 
       <div className="tutoring-grid">
-        {tutors.map((t) => (
+        {tutors.map((tutor) => (
           <motion.article
-            key={t.id}
+            key={tutor.id}
             className="tutoring-card section-block"
             initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
           >
-            <Link to={`/tutor/${encodeURIComponent(t.id)}`} className="tutoring-card-link">
-              {t.hasProfilePhoto ? (
+            <Link to={`/tutor/${encodeURIComponent(tutor.id)}`} className="tutoring-card-link">
+              {tutor.hasProfilePhoto ? (
                 <img
                   className="tutoring-card-photo"
-                  src={profilePhotoSrc(t.id, t.avatarUploadedAt)}
+                  src={profilePhotoSrc(tutor.id, tutor.avatarUploadedAt)}
                   alt=""
                   width={48}
                   height={48}
                 />
               ) : (
                 <div className="tutoring-card-avatar" aria-hidden="true">
-                  {String(t.fullName || "?").charAt(0).toUpperCase()}
+                  {String(tutor.fullName || "?").charAt(0).toUpperCase()}
                 </div>
               )}
               <div>
-                <h2 className="tutoring-card-name">{t.fullName}</h2>
+                <h2 className="tutoring-card-name">{tutor.fullName}</h2>
                 <p className="field-hint" style={{ margin: 0 }}>
-                  {t.educatorSubject || "SPM"}
-                  {t.educatorInstitution ? ` · ${t.educatorInstitution}` : ""}
+                  {tutor.educatorSubject || "SPM"}
+                  {tutor.educatorInstitution ? ` · ${tutor.educatorInstitution}` : ""}
                 </p>
-                <p className="tutoring-card-rate">{t.hourlyRateLabel || "Rate on profile"}</p>
-                {t.reviewCount > 0 ? (
+                <p className="tutoring-card-rate">
+                  {tutor.hourlyRateLabel || t("tutoring.rateOnProfile")}
+                </p>
+                {tutor.reviewCount > 0 ? (
                   <p className="field-hint" style={{ margin: "0.25rem 0 0" }}>
-                    ★ {t.averageRating} ({t.reviewCount} review{t.reviewCount === 1 ? "" : "s"})
+                    ★ {tutor.averageRating}{" "}
+                    {tutor.reviewCount === 1
+                      ? t("tutoring.reviewCount", { count: tutor.reviewCount })
+                      : t("tutoring.reviewsCount", { count: tutor.reviewCount })}
                   </p>
                 ) : (
                   <p className="field-hint" style={{ margin: "0.25rem 0 0" }}>
-                    No reviews yet
+                    {t("tutoring.noReviewsYet")}
                   </p>
                 )}
               </div>

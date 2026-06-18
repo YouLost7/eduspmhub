@@ -6,6 +6,8 @@ import { AppToast } from "../components/AppToast.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { apiJson } from "../api.js";
 import { profilePhotoSrc } from "../lib/profilePhoto.js";
+import { useI18n } from "../i18n/I18nContext.jsx";
+import LanguageSwitcher from "../components/LanguageSwitcher.jsx";
 
 const listVariants = {
   hidden: { opacity: 0 },
@@ -36,6 +38,7 @@ const REASON_ICONS = {
 
 export default function DashboardPage() {
   const { user, loading, logout } = useAuth();
+  const { t } = useI18n();
   const navigate = useNavigate();
   const [featured, setFeatured] = useState({
     recommended: [],
@@ -55,9 +58,9 @@ export default function DashboardPage() {
       });
       setLoadErr("");
     } catch (e) {
-      setLoadErr(e.message || "Could not load recommendations.");
+      setLoadErr(e.message || t("dashboard.loadError"));
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     loadFeatured();
@@ -70,13 +73,13 @@ export default function DashboardPage() {
         method: "POST",
         body: { courseId },
       });
-      setToast({ text: "Added to My courses.", kind: "success" });
+      setToast({ text: t("dashboard.addedToCourses"), kind: "success" });
       loadFeatured();
     } catch (e) {
       if (e.status === 401) {
         navigate(`/login?next=${encodeURIComponent("/browse")}&enroll=${encodeURIComponent(courseId)}`);
       } else {
-        setToast({ text: e.message || "Could not enrol.", kind: "error" });
+        setToast({ text: e.message || t("dashboard.enrolFailed"), kind: "error" });
       }
     }
   }
@@ -104,20 +107,21 @@ export default function DashboardPage() {
           <nav>
             <ul className="menu">
               <li>
-                <Link to="/">Home</Link>
+                <Link to="/">{t("common.home")}</Link>
               </li>
               <li>
-                <Link to="/browse">Browse</Link>
+                <Link to="/browse">{t("common.browse")}</Link>
               </li>
               <li>
-                <a href="#about">About</a>
+                <a href="#about">{t("common.about")}</a>
               </li>
               <li>
-                <a href="#contact">Contact</a>
+                <a href="#contact">{t("common.contact")}</a>
               </li>
             </ul>
           </nav>
           <div className="top-actions">
+            <LanguageSwitcher />
             <span className="search" aria-hidden="true">
               ⌕
             </span>
@@ -128,33 +132,33 @@ export default function DashboardPage() {
                 <span className="user-chip" title={user.email}>
                   {user.fullName}
                   {user.role === "educator" ? (
-                    <span className="role-pill role-pill--edu">Educator</span>
+                    <span className="role-pill role-pill--edu">{t("common.educator")}</span>
                   ) : (
-                    <span className="role-pill">Student</span>
+                    <span className="role-pill">{t("common.student")}</span>
                   )}
                 </span>
                 <Link className="link-btn" to="/browse">
-                  My hub
+                  {t("common.myHub")}
                 </Link>
                 <Link className="link-btn" to="/profile">
-                  Profile
+                  {t("common.profile")}
                 </Link>
                 <button type="button" className="link-btn" onClick={() => logout()}>
-                  Log out
+                  {t("common.logOut")}
                 </button>
               </>
             ) : (
               <>
                 <Link className="link-btn" to="/login">
-                  Log In
+                  {t("common.logIn")}
                 </Link>
                 <Link className="solid-btn" to="/register">
-                  Sign Up
+                  {t("common.signUp")}
                 </Link>
               </>
             )}
             <Link className="solid-btn" to="/platform">
-              Learning hub
+              {t("common.learningHub")}
             </Link>
           </div>
         </div>
@@ -250,7 +254,7 @@ export default function DashboardPage() {
 
           {loadErr && (
             <p className="form-error" style={{ margin: "0 0 0.5rem" }}>
-              {loadErr} Start the API with <code>npm run dev:all</code>.
+              {loadErr} {t("dashboard.apiStartHint")} <code>npm run dev:all</code>.
             </p>
           )}
           <AppToast
@@ -263,9 +267,9 @@ export default function DashboardPage() {
             <div className="left-content">
               <section className="section-block">
                 <div className="section-head">
-                  <h2>Recommended for You</h2>
+                  <h2>{t("dashboard.recommended")}</h2>
                   <Link to="/browse" style={{ fontSize: "0.86rem", fontWeight: 600 }}>
-                    View catalogue
+                    {t("dashboard.viewCatalogue")}
                   </Link>
                 </div>
                 <motion.div
@@ -276,17 +280,18 @@ export default function DashboardPage() {
                 >
                   {featured.recommended.length === 0 ? (
                     <p className="field-hint" style={{ gridColumn: "1 / -1" }}>
-                      No courses to recommend yet. When tutors publish modules, they will
-                      appear here.
+                      {t("dashboard.noRecommendations")}
                       {user?.role === "educator" ? (
                         <>
                           {" "}
-                          Add yours from <Link to="/my-courses">My teaching</Link>.
+                          {t("dashboard.addFromTeaching")}{" "}
+                          <Link to="/my-courses">{t("nav.myTeaching")}</Link>.
                         </>
                       ) : (
                         <>
                           {" "}
-                          <Link to="/browse">Browse</Link> when new listings go live.
+                          <Link to="/browse">{t("common.browse")}</Link>{" "}
+                          {t("dashboard.browseWhenLive")}
                         </>
                       )}
                     </p>
@@ -307,7 +312,7 @@ export default function DashboardPage() {
                         <p>{c.meta}</p>
                         {c.recommendationReason ? (
                           <p className="field-hint" style={{ marginTop: "0.2rem", marginBottom: "0.35rem" }}>
-                            Why this pick: {REASON_ICONS[c.recommendationReasonKey] || "✨"}{" "}
+                            {t("dashboard.whyThisPick")} {REASON_ICONS[c.recommendationReasonKey] || "✨"}{" "}
                             {c.recommendationReason}
                           </p>
                         ) : null}
@@ -318,14 +323,14 @@ export default function DashboardPage() {
                           className="outline-btn"
                           to={`/browse?course=${encodeURIComponent(c.id)}`}
                         >
-                          View course
+                          {t("dashboard.viewCourse")}
                         </Link>
                         {!user && (
                           <Link
                             className="solid-btn"
                             to={`/login?next=${encodeURIComponent("/browse")}&enroll=${encodeURIComponent(c.id)}`}
                           >
-                            Sign in to enrol
+                            {t("dashboard.signInToEnrol")}
                           </Link>
                         )}
                         {user?.role === "student" && (
@@ -334,12 +339,12 @@ export default function DashboardPage() {
                             className="solid-btn"
                             onClick={() => enrolFromDashboard(c.id)}
                           >
-                            Enrol
+                            {t("dashboard.enrol")}
                           </button>
                         )}
                         {user?.role === "educator" && (
                           <Link className="outline-btn" to="/browse">
-                            Catalogue
+                            {t("dashboard.catalogue")}
                           </Link>
                         )}
                       </div>
@@ -351,9 +356,9 @@ export default function DashboardPage() {
 
               <section className="section-block">
                 <div className="section-head">
-                  <h2>Tutors on the hub</h2>
+                  <h2>{t("dashboard.tutorsOnHub")}</h2>
                   <Link to="/browse" style={{ fontSize: "0.86rem", fontWeight: 600 }}>
-                    Find by subject
+                    {t("dashboard.findBySubject")}
                   </Link>
                 </div>
                 <motion.div
@@ -364,8 +369,8 @@ export default function DashboardPage() {
                 >
                   {featured.topEducators.length === 0 ? (
                     <p className="field-hint" style={{ gridColumn: "1 / -1" }}>
-                      No educators to highlight yet. When tutors register and verify, they
-                      appear here — publish courses from <Link to="/my-courses">My teaching</Link>.
+                      {t("dashboard.noEducatorsYet")}{" "}
+                      <Link to="/my-courses">{t("nav.myTeaching")}</Link>.
                     </p>
                   ) : (
                     featured.topEducators.map((e) => (
@@ -397,10 +402,10 @@ export default function DashboardPage() {
                         </p>
                         <p className="dashboard-educator-meta">
                           {e.publishedCourses === 0
-                            ? "No published courses yet"
-                            : `${e.publishedCourses} published course${
-                                e.publishedCourses === 1 ? "" : "s"
-                              } on the hub`}
+                            ? t("dashboard.noPublishedYet")
+                            : e.publishedCourses === 1
+                              ? t("dashboard.publishedCourses", { count: e.publishedCourses })
+                              : t("dashboard.publishedCoursesPlural", { count: e.publishedCourses })}
                         </p>
                         <p
                           className={
@@ -421,8 +426,8 @@ export default function DashboardPage() {
 
             <aside className="popular">
               <div className="section-head">
-                <h2>Popular Courses</h2>
-                <Link to="/browse">View All</Link>
+                <h2>{t("dashboard.popular")}</h2>
+                <Link to="/browse">{t("dashboard.viewAll")}</Link>
               </div>
               <motion.ul
                 className="popular-list"
@@ -432,7 +437,7 @@ export default function DashboardPage() {
               >
                 {featured.popular.length === 0 ? (
                   <li className="field-hint" style={{ listStyle: "none", padding: "0.5rem 0" }}>
-                    No enrolment data yet — popular picks appear as learners join courses.
+                    {t("dashboard.noPopularYet")}
                   </li>
                 ) : (
                   featured.popular.map((c) => (
@@ -441,8 +446,10 @@ export default function DashboardPage() {
                       <span>
                         <strong>{c.title}</strong>
                         <span className="pop-pop-meta">
-                          {c.enrollments} learner{c.enrollments === 1 ? "" : "s"} ·{" "}
-                          {c.subject}
+                          {c.enrollments === 1
+                            ? t("dashboard.learnerCount", { count: c.enrollments })
+                            : t("dashboard.learnersCount", { count: c.enrollments })}{" "}
+                          · {c.subject}
                         </span>
                       </span>
                       <span className="popular-price">{c.price}</span>

@@ -5,9 +5,11 @@ import { apiJson } from "../api.js";
 import { youtubeEmbedSrc, vimeoEmbedSrc } from "../lib/lessonEmbed.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import CourseProgressBar from "../components/CourseProgressBar.jsx";
+import { useI18n } from "../i18n/I18nContext.jsx";
 
 export default function CoursePlayerPage() {
   const { user } = useAuth();
+  const { t } = useI18n();
   const { courseId } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const [payload, setPayload] = useState(null);
@@ -26,11 +28,11 @@ export default function CoursePlayerPage() {
       setProgress(data.progress || null);
     } catch (e) {
       setPayload(null);
-      setErr(e.message || "Could not load this course.");
+      setErr(e.message || t("coursePlayer.loadError"));
     } finally {
       setLoading(false);
     }
-  }, [courseId]);
+  }, [courseId, t]);
 
   useEffect(() => {
     load();
@@ -128,17 +130,17 @@ export default function CoursePlayerPage() {
   const watermarkText = useMemo(() => {
     const name = String(user?.fullName || "").trim();
     const email = String(user?.email || "").trim();
-    const bit = name || email.split("@")[0] || email || "Learner";
+    const bit = name || email.split("@")[0] || email || t("coursePlayer.learnerWatermark");
     return `${bit} · EduSPM Hub`.slice(0, 72);
-  }, [user?.fullName, user?.email]);
+  }, [user?.fullName, user?.email, t]);
 
   return (
     <div>
       <div className="user-page-intro">
         <p style={{ margin: "0 0 0.35rem", fontSize: "0.86rem" }}>
-          <Link to="/my-courses">← My courses</Link>
+          <Link to="/my-courses">{t("coursePlayer.backToMyCourses")}</Link>
         </p>
-        <h1>{course?.title || "Course"}</h1>
+        <h1>{course?.title || t("coursePlayer.courseFallback")}</h1>
         {course && (
           <p style={{ margin: 0, color: "#475569" }}>
             {course.educatorId ? (
@@ -146,8 +148,8 @@ export default function CoursePlayerPage() {
             ) : (
               course.educator
             )}{" "}
-            · {course.subject}             · {course.lessons} lesson
-            {course.lessons === 1 ? "" : "s"}
+            · {course.subject} · {course.lessons}{" "}
+            {course.lessons === 1 ? t("common.lesson") : t("common.lessons")}
           </p>
         )}
         {progress && progress.totalLessons > 0 ? (
@@ -161,7 +163,7 @@ export default function CoursePlayerPage() {
         ) : null}
       </div>
 
-      {loading && <p className="field-hint">Loading…</p>}
+      {loading && <p className="field-hint">{t("common.loading")}</p>}
       {err && (
         <p className="form-error" role="alert">
           {err}
@@ -175,8 +177,8 @@ export default function CoursePlayerPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.25 }}
         >
-          <nav className="learn-side" aria-label="Lessons">
-            <h2 className="learn-side-title">Lessons</h2>
+          <nav className="learn-side" aria-label={t("coursePlayer.lessonsNav")}>
+            <h2 className="learn-side-title">{t("coursePlayer.lessonsNav")}</h2>
             <ol className="learn-lesson-list">
               {pages.map((p, i) => (
                 <li key={i}>
@@ -211,8 +213,7 @@ export default function CoursePlayerPage() {
                     page.body
                   ) : hasLessonMedia ? null : (
                     <span className="field-hint">
-                      No lesson text has been added for this slot yet. If you are the tutor,
-                      edit the course under My teaching and paste notes or instructions here.
+                      {t("coursePlayer.noLessonText")}
                     </span>
                   )}
                 </div>
@@ -220,8 +221,8 @@ export default function CoursePlayerPage() {
                   <div className="learn-pdf-block">
                     <p className="learn-pdf-label">
                       {page.pdfOriginalName
-                        ? `Handout: ${page.pdfOriginalName}`
-                        : "Lesson handout (PDF)"}
+                        ? t("coursePlayer.handoutNamed", { name: page.pdfOriginalName })
+                        : t("coursePlayer.handoutPdf")}
                     </p>
                     <div className="learn-pdf-frame-wrap learn-pdf-frame-wrap--wm">
                       <iframe
@@ -236,17 +237,15 @@ export default function CoursePlayerPage() {
                       ) : null}
                     </div>
                     <p className="field-hint learn-pdf-fallback">
-                      If the document does not appear, your browser may be blocking embedded PDFs.
-                      You can still open this lesson while signed in; try another browser or PDF
-                      viewer if needed.
+                      {t("coursePlayer.pdfFallback")}
                     </p>
                   </div>
                 ) : page.hasVideo && videoSrc ? (
                   <div className="learn-video-block">
                     <p className="learn-video-label">
                       {page.videoOriginalName
-                        ? `Video: ${page.videoOriginalName}`
-                        : "Lesson video"}
+                        ? t("coursePlayer.videoNamed", { name: page.videoOriginalName })
+                        : t("coursePlayer.lessonVideo")}
                     </p>
                     <div className="learn-video-frame-wrap learn-video-frame-wrap--wm">
                       <video
@@ -260,7 +259,7 @@ export default function CoursePlayerPage() {
                         title={`${page.title} — video`}
                         onContextMenu={(e) => e.preventDefault()}
                       >
-                        Your browser does not support embedded video.
+                        {t("coursePlayer.videoUnsupported")}
                       </video>
                       {watermarkText ? (
                         <div className="learn-media-watermark" aria-hidden="true">
@@ -269,19 +268,17 @@ export default function CoursePlayerPage() {
                       ) : null}
                     </div>
                     <p className="field-hint learn-video-note">
-                      Stream links expire after a while and are tied to your login. This deters casual
-                      link sharing; screen capture is still possible. Studio-grade DRM needs a
-                      dedicated video host.
+                      {t("coursePlayer.videoNote")}
                     </p>
                   </div>
                 ) : page.hasExternalVideo && embedSrc ? (
                   <div className="learn-embed-block">
                     <p className="learn-embed-label">
                       {String(page.externalVideoProvider || "").toLowerCase() === "youtube"
-                        ? "Lesson video (YouTube)"
+                        ? t("coursePlayer.youtubeVideo")
                         : String(page.externalVideoProvider || "").toLowerCase() === "vimeo"
-                          ? "Lesson video (Vimeo)"
-                          : "Lesson video"}
+                          ? t("coursePlayer.vimeoVideo")
+                          : t("coursePlayer.lessonVideo")}
                     </p>
                     <div className="learn-embed-frame-wrap">
                       <iframe
@@ -296,19 +293,16 @@ export default function CoursePlayerPage() {
                       />
                     </div>
                     <p className="field-hint learn-embed-note">
-                      Playback uses the host's embedded player. The clip must allow embedding with the
-                      link your tutor saved. Anyone can still screen-record; true DRM needs a paid video
-                      platform.
+                      {t("coursePlayer.embedNote")}
                     </p>
                   </div>
                 ) : page.hasExternalVideo && page.externalVideoUrl ? (
                   <div className="learn-embed-block">
-                    <p className="learn-embed-label">Lesson video</p>
+                    <p className="learn-embed-label">{t("coursePlayer.lessonVideo")}</p>
                     <p className="form-error" role="alert">
-                      This lesson has a saved link, but the player could not be built (unsupported host
-                      or missing video id).{" "}
+                      {t("coursePlayer.embedError")}{" "}
                       <a href={page.externalVideoUrl} target="_blank" rel="noopener noreferrer">
-                        Open the link in a new tab
+                        {t("coursePlayer.openInNewTab")}
                       </a>
                       .
                     </p>
@@ -316,7 +310,7 @@ export default function CoursePlayerPage() {
                 ) : null}
               </>
             ) : (
-              <p className="field-hint">This course has no lesson slots.</p>
+              <p className="field-hint">{t("coursePlayer.noLessonSlots")}</p>
             )}
           </article>
         </motion.div>

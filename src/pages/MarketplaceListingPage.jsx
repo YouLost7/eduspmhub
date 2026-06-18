@@ -2,11 +2,13 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { apiJson } from "../api.js";
 import { useAuth } from "../context/AuthContext.jsx";
+import { useI18n } from "../i18n/I18nContext.jsx";
 
 export default function MarketplaceListingPage() {
   const { listingId } = useParams();
   const [searchParams] = useSearchParams();
   const { user } = useAuth();
+  const { t } = useI18n();
   const [listing, setListing] = useState(null);
   const [err, setErr] = useState("");
   const [okMsg, setOkMsg] = useState("");
@@ -24,9 +26,9 @@ export default function MarketplaceListingPage() {
       setListing(data.listing || null);
     } catch (e) {
       setListing(null);
-      setErr(e.message || "Could not load listing");
+      setErr(e.message || t("marketplace.listingLoadError"));
     }
-  }, [listingId]);
+  }, [listingId, t]);
 
   useEffect(() => {
     load();
@@ -40,9 +42,9 @@ export default function MarketplaceListingPage() {
 
   useEffect(() => {
     if (searchParams.get("payment") === "cancelled") {
-      setErr("Payment was cancelled.");
+      setErr(t("marketplace.paymentCancelled"));
     }
-  }, [searchParams]);
+  }, [searchParams, t]);
 
   async function submitReport() {
     setBusy(true);
@@ -52,10 +54,10 @@ export default function MarketplaceListingPage() {
         method: "POST",
         body: { reason: reportReason, details: reportDetails },
       });
-      setOkMsg("Report submitted. Staff will review it.");
+      setOkMsg(t("marketplace.reportSubmitted"));
       setReportOpen(false);
     } catch (e) {
-      setErr(e.message || "Could not submit report");
+      setErr(e.message || t("marketplace.reportError"));
     } finally {
       setBusy(false);
     }
@@ -71,23 +73,23 @@ export default function MarketplaceListingPage() {
         body: { listingId, buyerNotes },
       });
       const url = String(data.checkoutUrl || "").trim();
-      if (!url) throw new Error("Checkout URL missing");
+      if (!url) throw new Error(t("marketplace.checkoutMissing"));
       window.location.assign(url);
     } catch (e) {
-      setErr(e.message || "Could not start checkout");
+      setErr(e.message || t("marketplace.checkoutError"));
       setBusy(false);
     }
   }
 
   if (!listing && !err) {
-    return <p className="field-hint">Loading…</p>;
+    return <p className="field-hint">{t("common.loading")}</p>;
   }
 
   if (!listing) {
     return (
       <div>
-        <p className="form-error">{err || "Not found"}</p>
-        <Link to="/marketplace">← Marketplace</Link>
+        <p className="form-error">{err || t("marketplace.notFound")}</p>
+        <Link to="/marketplace">{t("marketplace.backToMarketplace")}</Link>
       </div>
     );
   }
@@ -98,7 +100,7 @@ export default function MarketplaceListingPage() {
   return (
     <div>
       <p style={{ margin: "0 0 0.35rem", fontSize: "0.86rem" }}>
-        <Link to="/marketplace">← Marketplace</Link>
+        <Link to="/marketplace">{t("marketplace.backToMarketplace")}</Link>
       </p>
 
       <div className="marketplace-detail section-block">
@@ -109,7 +111,7 @@ export default function MarketplaceListingPage() {
             ))
           ) : (
             <div className="marketplace-card-thumb marketplace-card-thumb--empty marketplace-detail-photo">
-              {listing.itemType === "digital" ? "Digital file" : "No photo"}
+              {listing.itemType === "digital" ? t("marketplace.digitalFileBadge") : t("marketplace.noPhoto")}
             </div>
           )}
         </div>
@@ -118,15 +120,18 @@ export default function MarketplaceListingPage() {
           <h1>{listing.title}</h1>
           <p className="marketplace-card-price">{listing.priceLabel}</p>
           <p className="field-hint">
-            {listing.categoryLabel} · {listing.itemType === "digital" ? "Digital download" : "Physical pickup"}
+            {listing.categoryLabel} ·{" "}
+            {listing.itemType === "digital" ? t("marketplace.digital") : t("marketplace.physical")}
           </p>
           <p>
-            <strong>Seller:</strong> {listing.sellerName}{" "}
-            <span className="role-pill">{listing.sellerRole === "educator" ? "Educator" : "Student"}</span>
+            <strong>{t("marketplace.seller")}</strong> {listing.sellerName}{" "}
+            <span className="role-pill">
+              {listing.sellerRole === "educator" ? t("common.educator") : t("common.student")}
+            </span>
           </p>
           {listing.subject && (
             <p>
-              <strong>Subject:</strong> {listing.subject}
+              <strong>{t("marketplace.subject")}:</strong> {listing.subject}
               {listing.formLevel ? ` · ${listing.formLevel}` : ""}
             </p>
           )}
@@ -134,33 +139,33 @@ export default function MarketplaceListingPage() {
             <>
               {listing.condition && (
                 <p>
-                  <strong>Condition:</strong> {listing.condition}
+                  <strong>{t("marketplace.conditionLabel")}</strong> {listing.condition}
                 </p>
               )}
               <p>
-                <strong>Pickup area:</strong> {listing.pickupArea}
+                <strong>{t("marketplace.pickupAreaLabel")}</strong> {listing.pickupArea}
               </p>
               {listing.pickupNotes && (
                 <p>
-                  <strong>Pickup notes:</strong> {listing.pickupNotes}
+                  <strong>{t("marketplace.pickupNotesLabel")}</strong> {listing.pickupNotes}
                 </p>
               )}
             </>
           )}
           {listing.description && (
             <div className="marketplace-description">
-              <strong>Description</strong>
+              <strong>{t("marketplace.description")}</strong>
               <p style={{ whiteSpace: "pre-wrap" }}>{listing.description}</p>
             </div>
           )}
 
           {listing.status === "sold" && (
-            <p className="field-hint">This item has been sold.</p>
+            <p className="field-hint">{t("marketplace.itemSold")}</p>
           )}
           {isOwn && (
             <p>
               <Link to={`/marketplace/sell?edit=${encodeURIComponent(listing.id)}`} className="btn btn-secondary">
-                Edit listing
+                {t("marketplace.editListing")}
               </Link>
             </p>
           )}
@@ -171,14 +176,14 @@ export default function MarketplaceListingPage() {
                 className="link-btn"
                 onClick={() => setReportOpen((v) => !v)}
               >
-                Report listing
+                {t("marketplace.reportListing")}
               </button>
             </p>
           )}
           {reportOpen && !isOwn && (
             <div className="section-block marketplace-report-box">
               <label>
-                Reason
+                {t("marketplace.reason")}
                 <select
                   className="input"
                   value={reportReason}
@@ -192,7 +197,7 @@ export default function MarketplaceListingPage() {
                 </select>
               </label>
               <label>
-                Details (optional)
+                {t("marketplace.detailsOptional")}
                 <textarea
                   className="input"
                   rows={2}
@@ -202,7 +207,7 @@ export default function MarketplaceListingPage() {
                 />
               </label>
               <button type="button" className="btn btn-secondary" disabled={busy} onClick={submitReport}>
-                Submit report
+                {t("marketplace.submitReport")}
               </button>
             </div>
           )}
@@ -210,7 +215,7 @@ export default function MarketplaceListingPage() {
           {canBuy && (
             <div className="marketplace-buy-box">
               <label>
-                Message to seller (optional)
+                {t("marketplace.messageToSeller")}
                 <textarea
                   className="input"
                   rows={2}
@@ -220,7 +225,7 @@ export default function MarketplaceListingPage() {
                 />
               </label>
               <button type="button" className="btn btn-primary" disabled={busy} onClick={buy}>
-                {busy ? "Starting checkout…" : "Buy with Stripe"}
+                {busy ? t("marketplace.startingCheckout") : t("marketplace.buyWithStripe")}
               </button>
             </div>
           )}

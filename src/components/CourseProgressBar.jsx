@@ -1,3 +1,5 @@
+import { useI18n } from "../i18n/I18nContext.jsx";
+
 export default function CourseProgressBar({
   percent = 0,
   completedCount = 0,
@@ -5,18 +7,23 @@ export default function CourseProgressBar({
   compact = false,
   label,
 }) {
+  const { t } = useI18n();
   const pct = Math.min(100, Math.max(0, Number(percent) || 0));
   const done = Number(completedCount) || 0;
   const total = Number(totalLessons) || 0;
   const ariaLabel =
     label ||
-    (total > 0 ? `${done} of ${total} lessons completed (${pct}%)` : "No lessons yet");
+    (total > 0
+      ? t("myCourses.lessonsProgress", { done, total })
+      : t("myCourses.noLessonsYet"));
 
   return (
     <div className={`course-progress${compact ? " course-progress--compact" : ""}`}>
       <div className="course-progress-meta">
         <span>
-          {total > 0 ? `${done} of ${total} lessons` : "No lessons yet"}
+          {total > 0
+            ? t("myCourses.lessonsProgress", { done, total })
+            : t("myCourses.noLessonsYet")}
         </span>
         {total > 0 ? <span>{pct}%</span> : null}
       </div>

@@ -1,10 +1,13 @@
 import { Link, NavLink, Outlet } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useAuth } from "../context/AuthContext.jsx";
+import { useI18n } from "../i18n/I18nContext.jsx";
 import { profilePhotoSrc } from "../lib/profilePhoto.js";
+import LanguageSwitcher from "./LanguageSwitcher.jsx";
 
 export default function UserAppShell() {
   const { user, logout } = useAuth();
+  const { t } = useI18n();
   const isEducator = user?.role === "educator";
 
   return (
@@ -25,14 +28,15 @@ export default function UserAppShell() {
           <nav>
             <ul className="menu">
               <li>
-                <Link to="/">Home</Link>
+                <Link to="/">{t("common.home")}</Link>
               </li>
               <li>
-                <Link to="/platform">Learning hub</Link>
+                <Link to="/platform">{t("common.learningHub")}</Link>
               </li>
             </ul>
           </nav>
           <div className="top-actions user-app-user">
+            <LanguageSwitcher />
             <span className="user-chip" title={user?.email}>
               {user?.hasProfilePhoto ? (
                 <img
@@ -44,16 +48,16 @@ export default function UserAppShell() {
                 />
               ) : null}
               <span className="user-chip-label">
-                {user?.fullName || "User"}
+                {user?.fullName || t("common.profile")}
                 {isEducator ? (
-                  <span className="role-pill role-pill--edu">Educator</span>
+                  <span className="role-pill role-pill--edu">{t("common.educator")}</span>
                 ) : (
-                  <span className="role-pill">Student</span>
+                  <span className="role-pill">{t("common.student")}</span>
                 )}
               </span>
             </span>
             <button type="button" className="link-btn" onClick={() => logout()}>
-              Log out
+              {t("common.logOut")}
             </button>
           </div>
         </div>
@@ -63,7 +67,7 @@ export default function UserAppShell() {
         <aside className={`sidebar${isEducator ? " sidebar--educator" : ""}`}>
           {isEducator && (
             <p className="sidebar-badge">
-              {user?.verified ? "Verified" : "Pending review"}
+              {user?.verified ? t("common.verified") : t("common.pendingReview")}
             </p>
           )}
           <NavLink
@@ -72,7 +76,7 @@ export default function UserAppShell() {
               isActive ? "side-item active" : "side-item"
             }
           >
-            {isEducator ? "Browse catalogue" : "Browse"}
+            {isEducator ? t("nav.browseCatalogue") : t("common.browse")}
           </NavLink>
           <NavLink
             to="/my-courses"
@@ -80,7 +84,7 @@ export default function UserAppShell() {
               isActive ? "side-item active" : "side-item"
             }
           >
-            {isEducator ? "My teaching" : "My courses"}
+            {isEducator ? t("nav.myTeaching") : t("nav.myCourses")}
           </NavLink>
           <NavLink
             to="/marketplace"
@@ -88,7 +92,7 @@ export default function UserAppShell() {
               isActive ? "side-item active" : "side-item"
             }
           >
-            Study marketplace
+            {t("nav.studyMarketplace")}
           </NavLink>
           <NavLink
             to="/tutoring"
@@ -96,7 +100,7 @@ export default function UserAppShell() {
               isActive ? "side-item active" : "side-item"
             }
           >
-            {isEducator ? "1-on-1 listing" : "Hire a tutor"}
+            {isEducator ? t("nav.oneOnOneListing") : t("nav.hireTutor")}
           </NavLink>
           <NavLink
             to="/bookings"
@@ -104,7 +108,7 @@ export default function UserAppShell() {
               isActive ? "side-item active" : "side-item"
             }
           >
-            {isEducator ? "1-on-1 bookings" : "My bookings"}
+            {isEducator ? t("nav.oneOnOneBookings") : t("nav.myBookings")}
           </NavLink>
           {!isEducator && (
             <NavLink
@@ -113,7 +117,7 @@ export default function UserAppShell() {
                 isActive ? "side-item active" : "side-item"
               }
             >
-              Transactions
+              {t("nav.transactions")}
             </NavLink>
           )}
           <NavLink
@@ -122,7 +126,7 @@ export default function UserAppShell() {
               isActive ? "side-item active" : "side-item"
             }
           >
-            Profile
+            {t("common.profile")}
           </NavLink>
         </aside>
 

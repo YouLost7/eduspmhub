@@ -4,6 +4,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { apiJson } from "../api.js";
 import { AppToast } from "../components/AppToast.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
+import { useI18n } from "../i18n/I18nContext.jsx";
 
 function priceToCents(priceLike) {
   const raw = String(priceLike ?? "").trim();
@@ -17,6 +18,7 @@ function priceToCents(priceLike) {
 
 export default function BrowsePage() {
   const { user } = useAuth();
+  const { t } = useI18n();
   const [courses, setCourses] = useState([]);
   const [err, setErr] = useState("");
   const [okMsg, setOkMsg] = useState("");
@@ -90,7 +92,7 @@ export default function BrowsePage() {
       } catch (e) {
         if (!cancelled) {
           setDetail(null);
-          setDetailErr(e.message || "Could not load this course.");
+          setDetailErr(e.message || t("browse.loadCourseError"));
         }
       } finally {
         if (!cancelled) setDetailLoading(false);
@@ -99,7 +101,7 @@ export default function BrowsePage() {
     return () => {
       cancelled = true;
     };
-  }, [courseFocus]);
+  }, [courseFocus, t]);
 
   useEffect(() => {
     if (!courseFocus) return;
@@ -122,7 +124,7 @@ export default function BrowsePage() {
         body: { courseId },
       });
       setErr("");
-      setOkMsg("Added to My courses.");
+      setOkMsg(t("dashboard.addedToCourses"));
       return true;
     } catch (e) {
       setErr(e.message);
@@ -137,11 +139,11 @@ export default function BrowsePage() {
         body: { courseId },
       });
       const url = String(data.checkoutUrl || "").trim();
-      if (!url) throw new Error("Payment checkout URL was not returned");
+      if (!url) throw new Error(t("browse.paymentCheckoutMissing"));
       window.location.assign(url);
       return true;
     } catch (e) {
-      setErr(e.message || "Could not start payment");
+      setErr(e.message || t("browse.paymentStartError"));
       return false;
     }
   }
@@ -158,7 +160,7 @@ export default function BrowsePage() {
           method: "POST",
           body: { courseId: en },
         });
-        setOkMsg("Added to My courses.");
+        setOkMsg(t("dashboard.addedToCourses"));
         const next = new URLSearchParams(searchParams);
         next.delete("enroll");
         setSearchParams(next, { replace: true });
@@ -166,7 +168,7 @@ export default function BrowsePage() {
         processedAutoEnroll.current.delete(en);
       }
     })();
-  }, [user, searchParams, setSearchParams]);
+  }, [user, searchParams, setSearchParams, t]);
 
   const isEducator = user?.role === "educator";
   const loginLinkForCourse = useCallback((course) => {
@@ -181,55 +183,47 @@ export default function BrowsePage() {
     <div>
       {isEducator ? (
         <div className="user-page-intro user-page-intro--educator">
-          <h1>Educator catalogue</h1>
+          <h1>{t("browse.educatorTitle")}</h1>
           <p>
-            SPM courses listed here are published by verified educators (no built-in demo catalogue).
+            {t("browse.educatorIntroBase")}
             {user?.verified
-              ? " Your account is verified — use My teaching to create and manage listings."
-              : " Teaching tools (publish, pricing, analytics) unlock after we verify your certified licence on file."}
+              ? ` ${t("browse.educatorIntroVerified")}`
+              : ` ${t("browse.educatorIntroPending")}`}
           </p>
           {!user?.verified && (
             <p className="verify-banner">
               {!user?.hasLicenseDocument ? (
-                <>
-                  Status: <strong>Action needed</strong> — upload your certified
-                  educator licence on Profile (PDF or image). Students only see you as
-                  verified after staff approve that document.
-                </>
+                <>{t("browse.statusActionNeeded")}</>
               ) : (
-                <>
-                  Status: <strong>Licence submitted</strong> — you can browse and
-                  update your profile while we review your document. Publishing stays
-                  disabled until approval.
-                </>
+                <>{t("browse.statusLicenceSubmitted")}</>
               )}
             </p>
           )}
         </div>
       ) : (
         <div className="user-page-intro">
-          <h1>Browse for SPM</h1>
+          <h1>{t("browse.title")}</h1>
           <p>
-            Discover courses aligned with your subjects. Enrol with one tap — your
-            enrolments are saved to <strong>My courses</strong>.
+            {t("browse.intro")}{" "}
+            <strong>{t("browse.myCoursesBold")}</strong>.
           </p>
         </div>
       )}
 
       {subjectDecoded && (
         <p className="field-hint" style={{ marginBottom: "0.75rem" }}>
-          Filtered by subject: <strong>{subjectDecoded}</strong>{" "}
+          {t("browse.filteredBy")} <strong>{subjectDecoded}</strong>{" "}
           <Link to="/browse" style={{ marginLeft: "0.5rem", fontWeight: 600 }}>
-            Clear filter
+            {t("browse.clearFilter")}
           </Link>
         </p>
       )}
 
       {courseFocus && (
         <p className="field-hint" style={{ marginBottom: "0.75rem" }}>
-          Course details are open in the panel below.{" "}
+          {t("browse.panelOpen")}{" "}
           <button type="button" className="outline-btn" onClick={closeDetail}>
-            Close details
+            {t("browse.closeDetails")}
           </button>
         </p>
       )}
@@ -241,8 +235,7 @@ export default function BrowsePage() {
       )}
       {import.meta.env.DEV && user?.role === "student" && (
         <p className="verify-banner" role="status">
-          Dev payment mode: if Stripe keys are not configured, paid courses use a local mock
-          checkout and still grant access for testing.
+          {t("browse.devPaymentMode")}
         </p>
       )}
       {err && (
@@ -255,20 +248,21 @@ export default function BrowsePage() {
         {visibleCourses.length === 0 ? (
           <p className="field-hint" style={{ gridColumn: "1 / -1" }}>
             {subjectDecoded
-              ? "No courses match this subject filter."
-              : "The catalogue is empty for now."}{" "}
+              ? t("browse.noMatchFilter")
+              : t("browse.emptyCatalogue")}{" "}
             {user?.role === "educator" ? (
               <>
-                Publish modules from <Link to="/my-courses">My teaching</Link> once your
-                account is verified.
+                {t("browse.educatorEmptyHint")}{" "}
+                <Link to="/my-courses">{t("nav.myTeaching")}</Link>{" "}
+                {t("browse.educatorEmptyHintSuffix")}
               </>
             ) : (
-              <>Check back soon — tutors are adding real SPM listings.</>
+              <>{t("browse.studentEmptyHint")}</>
             )}
             {subjectDecoded && (
               <>
                 {" "}
-                <Link to="/browse">Show all courses</Link>
+                <Link to="/browse">{t("browse.showAll")}</Link>
               </>
             )}
           </p>
@@ -284,7 +278,7 @@ export default function BrowsePage() {
           >
             <Link
               to={`/browse?course=${encodeURIComponent(c.id)}`}
-              aria-label={`Open details for ${c.title}`}
+              aria-label={t("browse.openDetailsFor", { title: c.title })}
               style={{ display: "block" }}
             >
               <div className={`thumb ${c.thumb || ""}`.trim()} />
@@ -303,7 +297,7 @@ export default function BrowsePage() {
               ) : (
                 c.educator
               )}{" "}
-              • {c.lessons} lessons • {c.subject}
+              • {t("browse.lessonsCount", { count: c.lessons })} • {c.subject}
             </p>
             <span>{c.price}</span>
             <div className="course-card-actions">
@@ -311,14 +305,14 @@ export default function BrowsePage() {
                 className="outline-btn"
                 to={`/browse?course=${encodeURIComponent(c.id)}`}
               >
-                Details
+                {t("common.details")}
               </Link>
               {!user && (
                 <Link
                   className="solid-btn"
                   to={loginLinkForCourse(c)}
                 >
-                  {priceToCents(c.price) > 0 ? "Sign in to buy" : "Sign in to enrol"}
+                  {priceToCents(c.price) > 0 ? t("browse.signInToBuy") : t("browse.signInToEnrol")}
                 </Link>
               )}
               {user?.role === "student" && (
@@ -328,7 +322,7 @@ export default function BrowsePage() {
                     className="solid-btn browse-enrol"
                     onClick={() => checkout(c.id)}
                   >
-                    Buy now
+                    {t("browse.buyNow")}
                   </button>
                 ) : (
                   <button
@@ -336,7 +330,7 @@ export default function BrowsePage() {
                     className="solid-btn browse-enrol"
                     onClick={() => enroll(c.id)}
                   >
-                    Enrol
+                    {t("browse.enrol")}
                   </button>
                 )
               )}
@@ -344,10 +338,10 @@ export default function BrowsePage() {
             {isEducator && (
               <p className="educator-browse-note">
                 {!user?.verified
-                  ? "Publishing and paid listings stay disabled until your educator account is verified."
+                  ? t("browse.publishingDisabled")
                   : c.source === "educator" && c.educatorId === user?.id
-                    ? "Your listing — edit or publish from My teaching."
-                    : "You are verified — add your own courses from My teaching."}
+                    ? t("browse.yourListing")
+                    : t("browse.verifiedAddOwn")}
               </p>
             )}
           </motion.article>
@@ -356,7 +350,7 @@ export default function BrowsePage() {
       </div>
 
       <p className="browse-footer-link">
-        <Link to="/platform">Open full learning hub (notes &amp; videos)</Link>
+        <Link to="/platform">{t("browse.openLearningHub")}</Link>
       </p>
 
       {courseFocus && (detailLoading || detail || detailErr) ? (
@@ -375,13 +369,13 @@ export default function BrowsePage() {
             <button
               type="button"
               className="course-detail-close"
-              aria-label="Close"
+              aria-label={t("common.close")}
               onClick={closeDetail}
             >
               ×
             </button>
             {detailLoading ? (
-              <p className="field-hint">Loading course…</p>
+              <p className="field-hint">{t("browse.loadingCourse")}</p>
             ) : detailErr ? (
               <p className="form-error" role="alert">
                 {detailErr}
@@ -389,7 +383,7 @@ export default function BrowsePage() {
             ) : detail ? (
               <>
                 <p className="course-detail-source">
-                  {detail.source === "educator" ? "Tutor listing" : "Curated catalogue"}
+                  {detail.source === "educator" ? t("browse.tutorListing") : t("browse.curatedCatalogue")}
                 </p>
                 <h2 id="course-detail-title">{detail.title}</h2>
                 <p className="course-detail-meta">
@@ -399,11 +393,11 @@ export default function BrowsePage() {
                         {detail.educator}
                       </Link>
                       {" · "}
-                      {detail.lessons} lessons · {detail.subject}
+                      {t("browse.lessonsCount", { count: detail.lessons })} · {detail.subject}
                     </>
                   ) : (
                     <>
-                      {detail.educator} · {detail.lessons} lessons · {detail.subject}
+                      {detail.educator} · {t("browse.lessonsCount", { count: detail.lessons })} · {detail.subject}
                     </>
                   )}
                 </p>
@@ -423,7 +417,7 @@ export default function BrowsePage() {
                       className="outline-btn"
                       to={`/tutor/${encodeURIComponent(detail.educatorId)}`}
                     >
-                      Tutor profile
+                      {t("browse.tutorProfile")}
                     </Link>
                   ) : null}
                   {!user && (
@@ -431,7 +425,7 @@ export default function BrowsePage() {
                       className="solid-btn"
                       to={loginLinkForCourse(detail)}
                     >
-                      {priceToCents(detail.price) > 0 ? "Sign in to buy" : "Sign in to enrol"}
+                      {priceToCents(detail.price) > 0 ? t("browse.signInToBuy") : t("browse.signInToEnrol")}
                     </Link>
                   )}
                   {user?.role === "student" && (
@@ -443,7 +437,7 @@ export default function BrowsePage() {
                           await checkout(detail.id);
                         }}
                       >
-                        Buy this course
+                        {t("browse.buyThisCourse")}
                       </button>
                     ) : (
                       <button
@@ -453,12 +447,12 @@ export default function BrowsePage() {
                           if (await enroll(detail.id)) closeDetail();
                         }}
                       >
-                        Enrol in this course
+                        {t("browse.enrolThisCourse")}
                       </button>
                     )
                   )}
                   <button type="button" className="outline-btn" onClick={closeDetail}>
-                    Close
+                    {t("browse.close")}
                   </button>
                 </div>
               </>

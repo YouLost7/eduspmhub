@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { apiJson, messageForFailedApiResponse } from "../api.js";
 import { AppToast } from "./AppToast.jsx";
 import { parseExternalVideoUrl } from "../lib/lessonEmbed.js";
+import { useI18n } from "../i18n/I18nContext.jsx";
 
 const SUBJECTS = [
   "Bahasa Melayu",
@@ -88,6 +89,7 @@ function lessonPagesToEditState(c) {
 }
 
 export default function EducatorMyTeaching() {
+  const { t } = useI18n();
   const [courses, setCourses] = useState([]);
   const [loadErr, setLoadErr] = useState("");
   const [msg, setMsg] = useState("");
@@ -120,9 +122,9 @@ export default function EducatorMyTeaching() {
       setCourses(courseData.courses || []);
     } catch (e) {
       setCourses([]);
-      setLoadErr(e.message || "Could not load your courses.");
+      setLoadErr(e.message || t("teaching.loadError"));
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     load();
@@ -481,20 +483,10 @@ export default function EducatorMyTeaching() {
   return (
     <div className="educator-teaching">
       <div className="user-page-intro user-page-intro--educator">
-        <h1>My teaching</h1>
-        <p>
-          Create and publish your own SPM courses. Published courses appear in{" "}
-          <Link to="/browse">Browse</Link> for students to enrol. Drafts stay private until
-          you publish. After you create a course, tap <strong>Edit</strong>, set how many
-          <strong>Lessons</strong> you want, then fill each lesson&apos;s <strong>Title</strong> and{" "}
-          <strong>Content</strong>. Each lesson may include <strong>either</strong> a PDF handout{" "}
-          <strong>or</strong> an embedded video (MP4/WebM) — not both. Media plays inside the lesson
-          page for signed-in learners. Press <strong>Save changes</strong> for text; files save on
-          upload. Use <strong>Preview lessons</strong> to review. Open <strong>Who enrolled</strong> on each
-          course to see how many students joined and their account details.
-        </p>
+        <h1>{t("teaching.title")}</h1>
+        <p>{t("teaching.intro")}</p>
         <Link className="outline-btn" to="/browse">
-          View public catalogue
+          {t("teaching.viewCatalogue")}
         </Link>
       </div>
 
@@ -510,20 +502,20 @@ export default function EducatorMyTeaching() {
       )}
 
       <section className="section-block educator-create">
-        <h2>Add a new course</h2>
+        <h2>{t("teaching.addNewCourse")}</h2>
         <form className="profile-form" onSubmit={createCourse}>
           <div className="field">
-            <label htmlFor="ec-title">Title</label>
+            <label htmlFor="ec-title">{t("teaching.titleLabel")}</label>
             <input
               id="ec-title"
               value={nTitle}
               onChange={(e) => setNTitle(e.target.value)}
-              placeholder="e.g. Form 5 Physics — Electricity"
+              placeholder={t("teaching.titlePlaceholder")}
               required
             />
           </div>
           <div className="field">
-            <label htmlFor="ec-subject">Subject</label>
+            <label htmlFor="ec-subject">{t("teaching.subject")}</label>
             <select
               id="ec-subject"
               value={nSubject}
@@ -538,19 +530,19 @@ export default function EducatorMyTeaching() {
           </div>
           <div className="field-row">
             <div className="field">
-              <label htmlFor="ec-price">Price (RM)</label>
+              <label htmlFor="ec-price">{t("teaching.priceRm")}</label>
               <input
                 id="ec-price"
                 type="text"
                 inputMode="decimal"
                 value={nPrice}
                 onChange={(e) => setNPrice(e.target.value)}
-                placeholder="e.g. 35 or 35.00"
+                placeholder={t("teaching.pricePlaceholder")}
               />
-              <p className="field-hint">Minimum paid price is RM2.00. Lower values are saved as free.</p>
+              <p className="field-hint">{t("teaching.priceHint")}</p>
             </div>
             <div className="field">
-              <label htmlFor="ec-lessons">Lessons</label>
+              <label htmlFor="ec-lessons">{t("teaching.lessons")}</label>
               <input
                 id="ec-lessons"
                 type="number"
@@ -562,9 +554,9 @@ export default function EducatorMyTeaching() {
             </div>
           </div>
           <div className="field">
-            <label htmlFor="ec-thumb">Card style (optional)</label>
+            <label htmlFor="ec-thumb">{t("teaching.cardStyle")}</label>
             <select id="ec-thumb" value={nThumb} onChange={(e) => setNThumb(e.target.value)}>
-              <option value="">Default</option>
+              <option value="">{t("teaching.default")}</option>
               {THUMBS.filter(Boolean).map((t) => (
                 <option key={t} value={t}>
                   {t}
@@ -573,13 +565,13 @@ export default function EducatorMyTeaching() {
             </select>
           </div>
           <div className="field">
-            <label htmlFor="ec-desc">Description</label>
+            <label htmlFor="ec-desc">{t("teaching.description")}</label>
             <textarea
               id="ec-desc"
               rows={4}
               value={nDesc}
               onChange={(e) => setNDesc(e.target.value)}
-              placeholder="What students will learn, prerequisites, schedule notes…"
+              placeholder={t("teaching.descPlaceholder")}
             />
           </div>
           <label className="checkbox-label" style={{ marginBottom: "0.75rem" }}>
@@ -588,18 +580,18 @@ export default function EducatorMyTeaching() {
               checked={nPublish}
               onChange={(e) => setNPublish(e.target.checked)}
             />
-            <span>Publish immediately (visible in Browse)</span>
+            <span>{t("teaching.publishImmediately")}</span>
           </label>
           <button type="submit" className="solid-btn">
-            Save course
+            {t("teaching.saveCourse")}
           </button>
         </form>
       </section>
 
       <section className="section-block my-list">
-        <h2>Your courses ({courses.length})</h2>
+        <h2>{t("teaching.yourCourses", { count: courses.length })}</h2>
         {courses.length === 0 ? (
-          <p className="empty-list">No courses yet — add one above.</p>
+          <p className="empty-list">{t("teaching.noCoursesYet")}</p>
         ) : (
           <ul className="enrol-list educator-course-list">
             {courses.map((c) => {
@@ -627,16 +619,16 @@ export default function EducatorMyTeaching() {
                       }
                       style={{ marginLeft: "0.5rem" }}
                     >
-                      {c.status === "published" ? "Published" : "Draft"}
+                      {c.status === "published" ? t("teaching.published") : t("teaching.draft")}
                     </span>
                   </div>
                   <div className="educator-course-actions">
                     <Link className="outline-btn" to={`/learn/${encodeURIComponent(c.id)}`}>
-                      Preview lessons
+                      {t("teaching.previewLessons")}
                     </Link>
                     {editId !== c.id ? (
                       <button type="button" className="outline-btn" onClick={() => openEdit(c)}>
-                        Edit
+                        {t("teaching.edit")}
                       </button>
                     ) : null}
                     {c.status === "draft" ? (
@@ -646,7 +638,7 @@ export default function EducatorMyTeaching() {
                         disabled={busyId === c.id}
                         onClick={() => setStatus(c.id, "published")}
                       >
-                        Publish
+                        {t("teaching.publish")}
                       </button>
                     ) : (
                       <button
@@ -655,7 +647,7 @@ export default function EducatorMyTeaching() {
                         disabled={busyId === c.id}
                         onClick={() => setStatus(c.id, "draft")}
                       >
-                        Unpublish
+                        {t("teaching.unpublish")}
                       </button>
                     )}
                     <button
@@ -665,7 +657,7 @@ export default function EducatorMyTeaching() {
                       disabled={busyId === c.id}
                       onClick={() => removeCourse(c.id)}
                     >
-                      Delete
+                      {t("teaching.delete")}
                     </button>
                   </div>
                 </div>
@@ -679,14 +671,14 @@ export default function EducatorMyTeaching() {
                 <div className="educator-enroll-block">
                   <p className="educator-enroll-count">
                     {n === 0
-                      ? "No students enrolled yet."
+                      ? t("teaching.noStudentsYet")
                       : n === 1
                         ? "1 student enrolled."
                         : `${n} students enrolled.`}
                   </p>
                   <details className="educator-enroll-details">
                     <summary>
-                      {n === 0 ? "Enrolment list" : `Who enrolled (${n})`}
+                      {n === 0 ? t("teaching.whoEnrolled") : t("teaching.whoEnrolledCount", { count: n })}
                     </summary>
                     {n === 0 ? (
                       <p className="field-hint" style={{ margin: "0.35rem 0 0" }}>
@@ -812,7 +804,7 @@ export default function EducatorMyTeaching() {
                               Lesson {i + 1}: {lessonLabel}
                             </span>
                             <span className="lesson-edit-summary-meta">
-                              {hasAnyMedia ? "Media attached" : "No media"}
+                              {hasAnyMedia ? t("teaching.mediaAttached") : t("teaching.noMedia")}
                             </span>
                           </summary>
                           <div className="field lesson-edit-content">
@@ -850,7 +842,7 @@ export default function EducatorMyTeaching() {
                                   return next;
                                 });
                               }}
-                              placeholder="Notes, links, instructions…"
+                              placeholder={t("teaching.contentPlaceholder")}
                             />
                           </div>
                           <div className="field">
