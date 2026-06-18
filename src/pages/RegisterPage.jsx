@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { isLikelySchoolEmail } from "../utils/emailValidation.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { MALAYSIA_SCHOOLS, STUDENT_FORM_LEVELS } from "../../shared/studentOptions.js";
-import { normalizePersonName } from "../../shared/personName.js";
+import { formatPersonNameInput, normalizePersonName } from "../../shared/personName.js";
 
 const SUBJECTS = [
   ["", "Choose one subject"],
@@ -239,7 +239,7 @@ export default function RegisterPage() {
                   id="fullName"
                   name="fullName"
                   value={fullName}
-                  onChange={(e) => setFullName(normalizePersonName(e.target.value))}
+                  onChange={(e) => setFullName(formatPersonNameInput(e.target.value))}
                   type="text"
                   placeholder="AHMAD BIN ALI"
                   autoComplete="name"

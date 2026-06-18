@@ -1,8 +1,14 @@
-/** Normalize a person's display name: trim, collapse spaces, UPPERCASE. */
+/** Live typing helper — uppercase; keeps a trailing space while the next word is typed. */
+export function formatPersonNameInput(raw) {
+  return String(raw || "")
+    .replace(/^\s+/, "")
+    .replace(/\s{2,}/g, " ")
+    .toUpperCase();
+}
+
+/** Final name for storage: trim, collapse spaces, UPPERCASE. */
 export function normalizePersonName(raw) {
-  const name = String(raw || "")
-    .trim()
-    .replace(/\s+/g, " ");
+  const name = formatPersonNameInput(raw).trim();
   if (!name) return "";
-  return name.toUpperCase();
+  return name;
 }

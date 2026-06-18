@@ -1,11 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { friendlyNonJsonApiMessage, messageForFailedApiResponse } from "../src/api.js";
-import { normalizePersonName } from "../shared/personName.js";
+import { normalizePersonName, formatPersonNameInput } from "../shared/personName.js";
 
 test("normalizePersonName uppercases and trims names", () => {
   assert.equal(normalizePersonName("  ahmad bin ali  "), "AHMAD BIN ALI");
   assert.equal(normalizePersonName(""), "");
+});
+
+test("formatPersonNameInput preserves trailing space while typing", () => {
+  assert.equal(formatPersonNameInput("ahmad "), "AHMAD ");
+  assert.equal(formatPersonNameInput("  ahmad  ali"), "AHMAD ALI");
 });
 
 test("friendlyNonJsonApiMessage maps payload-too-large errors", () => {
