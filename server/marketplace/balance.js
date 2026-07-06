@@ -84,19 +84,19 @@ export async function listBalanceTransactions(userId, limit = 50) {
   }));
 }
 
-async function hasSaleCredit(referenceType, referenceId) {
-  const db = await getDb();
-  const row = await sqlite.get(
-    db,
-    `SELECT id FROM balance_transactions
-     WHERE reference_type = ? AND reference_id = ? AND type = 'sale_credit'
-     LIMIT 1`,
-    [String(referenceType), String(referenceId)]
-  );
-  return Boolean(row);
-}
-
-/** Idempotent: credit seller net of platform fee. */
+/**
+ * Idempotent + race-safe: credit seller net of platform fee.
+ *
+ * The unique (reference_type, reference_id, type) index on
+ * balance_transactions is used as an atomic claim: we INSERT the
+ * 'sale_credit' ledger row *before* touching the balance, and only proceed
+ * to update seller_balances if that insert actually landed a row. A
+ * check-then-act version of this (SELECT to check for an existing credit,
+ * then separately UPDATE the balance) has a race window where two
+ * concurrent calls for the same sale could both pass the check and both
+ * increment the balance before either insert — the insert-first ordering
+ * here closes that window, since only one of two racing INSERTs can win.
+ */
 async function creditEarnings({
   sellerId,
   grossCents,
@@ -105,9 +105,6 @@ async function creditEarnings({
   descriptionLabel,
 }) {
   if (!sellerId) return { credited: false, reason: "no_seller" };
-  if (await hasSaleCredit(referenceType, referenceId)) {
-    return { credited: false, duplicate: true };
-  }
 
   const gross = Number(grossCents) || 0;
   const fee = marketplacePlatformFeeCents(gross);
@@ -119,43 +116,47 @@ async function creditEarnings({
   const now = new Date().toISOString();
   const label = String(descriptionLabel || "Sale").slice(0, 120);
 
-  await sqlite.run(
-    db,
-    `UPDATE seller_balances SET
-      available_cents = available_cents + ?,
-      lifetime_earned_cents = lifetime_earned_cents + ?,
-      updated_at = ?
-     WHERE user_id = ?`,
-    [net, net, now, String(sellerId)]
-  );
-
-  await sqlite.run(
-    db,
-    `INSERT INTO balance_transactions (
-      id, user_id, type, amount_cents, reference_type, reference_id, description, created_at
-    ) VALUES (?, ?, 'sale_credit', ?, ?, ?, ?, ?)`,
-    [randomUUID(), String(sellerId), net, String(referenceType), String(referenceId), label, now]
-  );
-
-  if (fee > 0) {
-    await sqlite.run(
-      db,
+  return sqlite.withTransaction(db, async (tx) => {
+    const inserted = await tx.run(
       `INSERT INTO balance_transactions (
         id, user_id, type, amount_cents, reference_type, reference_id, description, created_at
-      ) VALUES (?, ?, 'platform_fee', ?, ?, ?, ?, ?)`,
-      [
-        randomUUID(),
-        String(sellerId),
-        -fee,
-        String(referenceType),
-        String(referenceId),
-        `Platform fee (${MARKETPLACE_PLATFORM_FEE_BPS / 100}%)`,
-        now,
-      ]
+      ) VALUES (?, ?, 'sale_credit', ?, ?, ?, ?, ?)
+      ON CONFLICT (reference_type, reference_id, type) DO NOTHING`,
+      [randomUUID(), String(sellerId), net, String(referenceType), String(referenceId), label, now]
     );
-  }
+    if (!inserted.changes) {
+      return { credited: false, duplicate: true };
+    }
 
-  return { credited: true, netCents: net, feeCents: fee };
+    await tx.run(
+      `UPDATE seller_balances SET
+        available_cents = available_cents + ?,
+        lifetime_earned_cents = lifetime_earned_cents + ?,
+        updated_at = ?
+       WHERE user_id = ?`,
+      [net, net, now, String(sellerId)]
+    );
+
+    if (fee > 0) {
+      await tx.run(
+        `INSERT INTO balance_transactions (
+          id, user_id, type, amount_cents, reference_type, reference_id, description, created_at
+        ) VALUES (?, ?, 'platform_fee', ?, ?, ?, ?, ?)
+        ON CONFLICT (reference_type, reference_id, type) DO NOTHING`,
+        [
+          randomUUID(),
+          String(sellerId),
+          -fee,
+          String(referenceType),
+          String(referenceId),
+          `Platform fee (${MARKETPLACE_PLATFORM_FEE_BPS / 100}%)`,
+          now,
+        ]
+      );
+    }
+
+    return { credited: true, netCents: net, feeCents: fee };
+  });
 }
 
 /** Idempotent: credit seller after a paid marketplace order. */
@@ -313,12 +314,16 @@ export async function markWithdrawalPaid(id, adminNote = "") {
   if (!w || w.status !== "pending") return null;
   const db = await getDb();
   const now = new Date().toISOString();
-  await sqlite.run(
+  // Atomically claim the "pending -> paid" transition so a concurrent
+  // cancel (or a duplicate mark-paid click) can't also act on the same
+  // withdrawal after this one already has.
+  const claim = await sqlite.run(
     db,
     `UPDATE withdrawal_requests SET status = 'paid', processed_at = ?, admin_note = ?
-     WHERE id = ?`,
+     WHERE id = ? AND status = 'pending'`,
     [now, String(adminNote || "").slice(0, 500), String(id)]
   );
+  if (!(claim?.changes > 0)) return null;
   return getWithdrawalById(id);
 }
 
@@ -328,18 +333,22 @@ export async function cancelWithdrawal(id, adminNote = "") {
   const db = await getDb();
   const now = new Date().toISOString();
 
+  // Atomically claim the "pending -> cancelled" transition *before*
+  // refunding the balance, so a concurrent mark-paid can't also succeed and
+  // cause the platform to both pay out and refund the same withdrawal.
+  const claim = await sqlite.run(
+    db,
+    `UPDATE withdrawal_requests SET status = 'cancelled', processed_at = ?, admin_note = ?
+     WHERE id = ? AND status = 'pending'`,
+    [now, String(adminNote || "").slice(0, 500), String(id)]
+  );
+  if (!(claim?.changes > 0)) return null;
+
   await sqlite.run(
     db,
     `UPDATE seller_balances SET available_cents = available_cents + ?, updated_at = ?
      WHERE user_id = ?`,
     [w.amountCents, now, w.userId]
-  );
-
-  await sqlite.run(
-    db,
-    `UPDATE withdrawal_requests SET status = 'cancelled', processed_at = ?, admin_note = ?
-     WHERE id = ?`,
-    [now, String(adminNote || "").slice(0, 500), String(id)]
   );
 
   await sqlite.run(

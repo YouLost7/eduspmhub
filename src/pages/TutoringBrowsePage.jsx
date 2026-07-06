@@ -66,6 +66,7 @@ export default function TutoringBrowsePage() {
                   className="tutoring-card-photo"
                   src={profilePhotoSrc(tutor.id, tutor.avatarUploadedAt)}
                   alt=""
+                  loading="lazy"
                   width={48}
                   height={48}
                 />

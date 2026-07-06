@@ -1,13 +1,13 @@
 import { randomUUID } from "node:crypto";
 import {
   getBookingById,
-  insertBooking,
   updateBookingStatus,
   listBookingsForStudent,
   listBookingsForTutor,
   getReviewForBooking,
+  getReviewsForBookings,
   insertReview,
-  getTutorReviewStats,
+  getTutorReviewStatsForTutors,
   normalizeHours,
   normalizeHourlyRateCents,
   formatMoneyLabel,
@@ -17,11 +17,17 @@ import {
   upsertPaymentRecord,
   getPaymentBySessionId,
 } from "../payments/store.js";
-import { createStripeClient, fetchStripeReceiptUrl } from "../payments/stripe.js";
+import {
+  createStripeClient,
+  fetchStripeReceiptUrl,
+  refundStripePaymentIntent,
+} from "../payments/stripe.js";
 import {
   listAvailabilityForTutor,
+  listAvailabilityForTutors,
   replaceAvailabilityForTutor,
   validateBookingAgainstAvailability,
+  reserveTutoringBooking,
   listBookableSlots,
 } from "../tutoring/availability.js";
 import { notifyTutoringEvent } from "../tutoring/notifications.js";
@@ -89,55 +95,103 @@ export async function grantPaidTutoringFromSession(session, deps) {
   const hours = Number(m.hours);
   const courseTitle = `1-on-1 tutoring (${hours}h)`;
 
-  const paymentId = await upsertPaymentRecord({
-    id: existing?.id || randomUUID(),
-    provider: "stripe",
-    providerSessionId: sessionId,
-    providerPaymentIntentId: paymentIntentId || null,
-    providerEventId,
-    userId,
-    courseId,
-    courseTitle,
-    amountCents,
-    currency,
-    status: "paid",
-    receiptUrl: receiptUrl || null,
-    paymentMethodType: "card",
-    rawPayload: session,
-    paidAt,
-  });
-
   let booking = await getBookingById(bookingId);
   if (!booking) {
     const scheduledStart = String(m.scheduledStart || "");
     const scheduledEnd = String(m.scheduledEnd || "");
+    // Cheap up-front check for a friendly error; the atomic reservation
+    // below is what actually prevents two students double-booking the same
+    // slot when both checkouts complete around the same time.
     const slotCheck = await validateBookingAgainstAvailability(
       tutorId,
       scheduledStart,
       scheduledEnd
     );
-    if (!slotCheck.ok) {
-      throw new Error(slotCheck.error || "Session slot no longer available");
+    const reserved = slotCheck.ok
+      ? await reserveTutoringBooking({
+          tutorId,
+          scheduledStart,
+          scheduledEnd,
+          insertParams: {
+            id: bookingId,
+            studentId: userId,
+            status: "paid",
+            hours,
+            hourlyRateCents: Number(m.hourlyRateCents) || 0,
+            amountCents,
+            studentMessage: String(m.studentMessage || ""),
+            paymentId: null,
+          },
+        })
+      : { ok: false, error: slotCheck.error };
+
+    if (!reserved.ok) {
+      // The student was already charged by Stripe for a slot that's no
+      // longer available — refund instead of leaving them charged with no
+      // booking.
+      const refunded = await refundStripePaymentIntent(stripe, paymentIntentId);
+      await upsertPaymentRecord({
+        id: existing?.id || randomUUID(),
+        provider: "stripe",
+        providerSessionId: sessionId,
+        providerPaymentIntentId: paymentIntentId || null,
+        providerEventId,
+        userId,
+        courseId,
+        courseTitle,
+        amountCents,
+        currency,
+        status: refunded ? "refunded" : "failed",
+        paymentMethodType: "card",
+        rawPayload: session,
+        paidAt: null,
+      });
+      throw new Error(reserved.error || "Session slot no longer available");
     }
-    booking = await insertBooking({
-      id: bookingId,
-      studentId: userId,
-      tutorId,
-      status: "paid",
-      scheduledStart,
-      scheduledEnd,
-      hours,
-      hourlyRateCents: Number(m.hourlyRateCents) || 0,
+
+    const paymentId = await upsertPaymentRecord({
+      id: existing?.id || randomUUID(),
+      provider: "stripe",
+      providerSessionId: sessionId,
+      providerPaymentIntentId: paymentIntentId || null,
+      providerEventId,
+      userId,
+      courseId,
+      courseTitle,
       amountCents,
-      studentMessage: String(m.studentMessage || ""),
-      paymentId,
+      currency,
+      status: "paid",
+      receiptUrl: receiptUrl || null,
+      paymentMethodType: "card",
+      rawPayload: session,
+      paidAt,
     });
+    await updateBookingStatus(bookingId, "paid", { paymentId });
+    booking = await getBookingById(bookingId);
     notifyTutoringEvent({
       type: "paid",
       bookingId,
       ...notifyDeps(deps),
     }).catch((e) => console.error("[notify paid]", e));
+    return { bookingId, paymentId, userId };
   } else {
+    const paymentId = await upsertPaymentRecord({
+      id: existing?.id || randomUUID(),
+      provider: "stripe",
+      providerSessionId: sessionId,
+      providerPaymentIntentId: paymentIntentId || null,
+      providerEventId,
+      userId,
+      courseId,
+      courseTitle,
+      amountCents,
+      currency,
+      status: "paid",
+      receiptUrl: receiptUrl || null,
+      paymentMethodType: "card",
+      rawPayload: session,
+      paidAt,
+    });
     if (booking.studentId !== userId) {
       throw new Error("Booking does not belong to this student");
     }
@@ -151,8 +205,8 @@ export async function grantPaidTutoringFromSession(session, deps) {
     } else if (booking.status === "paid" && !booking.paymentId) {
       await updateBookingStatus(bookingId, "paid", { paymentId });
     }
+    return { bookingId, paymentId, userId };
   }
-  return { bookingId, paymentId, userId };
 }
 
 async function resolveTutoringCheckoutRequest(req, { loadUsers, findUserById }) {
@@ -248,6 +302,7 @@ export function registerTutoringRoutes(app, deps) {
     STRIPE_SECRET_KEY,
     isProd,
     allowMockPayments = !isProd,
+    checkoutLimiter,
   } = deps;
 
   const stripe = STRIPE_SECRET_KEY ? createStripeClient(STRIPE_SECRET_KEY) : null;
@@ -266,16 +321,15 @@ export function registerTutoringRoutes(app, deps) {
             ? await listBookingsForStudent(u.id)
             : [];
 
-      const bookings = await Promise.all(
-        list.map(async (b) => {
-          const enriched = enrichBooking(b, users, findUserById);
-          const review =
-            u.role === "student" && b.status === "completed"
-              ? await getReviewForBooking(b.id)
-              : null;
-          return { ...enriched, myReview: review };
-        })
-      );
+      const completedIds =
+        u.role === "student"
+          ? list.filter((b) => b.status === "completed").map((b) => b.id)
+          : [];
+      const reviewsByBooking = await getReviewsForBookings(completedIds);
+      const bookings = list.map((b) => ({
+        ...enrichBooking(b, users, findUserById),
+        myReview: reviewsByBooking.get(b.id) || null,
+      }));
       res.json({ bookings });
     } catch (e) {
       console.error(e);
@@ -284,7 +338,7 @@ export function registerTutoringRoutes(app, deps) {
   });
 
   /** Pay-first: no unpaid booking row until Stripe succeeds. */
-  app.post("/api/tutoring/checkout", requireAuth, async (req, res) => {
+  app.post("/api/tutoring/checkout", requireAuth, checkoutLimiter, async (req, res) => {
     try {
       const resolved = await resolveTutoringCheckoutRequest(req, {
         loadUsers,
@@ -315,19 +369,24 @@ export function registerTutoringRoutes(app, deps) {
         }
         const paymentId = randomUUID();
         const now = new Date().toISOString();
-        await insertBooking({
-          id: bookingId,
-          studentId: student.id,
+        const reserved = await reserveTutoringBooking({
           tutorId: tutor.id,
-          status: "paid",
           scheduledStart,
           scheduledEnd,
-          hours,
-          hourlyRateCents,
-          amountCents,
-          studentMessage,
-          paymentId,
+          insertParams: {
+            id: bookingId,
+            studentId: student.id,
+            status: "paid",
+            hours,
+            hourlyRateCents,
+            amountCents,
+            studentMessage,
+            paymentId,
+          },
         });
+        if (!reserved.ok) {
+          return res.status(409).json({ error: reserved.error });
+        }
         await upsertPaymentRecord({
           id: paymentId,
           provider: "mock",
@@ -358,7 +417,6 @@ export function registerTutoringRoutes(app, deps) {
 
       const session = await stripe.checkout.sessions.create({
         mode: "payment",
-        payment_method_types: ["card"],
         client_reference_id: String(student.id),
         metadata: {
           productType: "tutoring",
@@ -415,7 +473,12 @@ export function registerTutoringRoutes(app, deps) {
       if (booking.status !== "paid") {
         return res.status(409).json({ error: "Only paid bookings can be accepted." });
       }
-      const updated = await updateBookingStatus(booking.id, "accepted");
+      const updated = await updateBookingStatus(booking.id, "accepted", {
+        expectedStatus: "paid",
+      });
+      if (!updated) {
+        return res.status(409).json({ error: "This booking was already updated." });
+      }
       notifyTutoringEvent({
         type: "accepted",
         bookingId: booking.id,
@@ -443,17 +506,25 @@ export function registerTutoringRoutes(app, deps) {
       if (!["paid", "accepted"].includes(booking.status)) {
         return res.status(409).json({ error: "This booking cannot be declined." });
       }
+      // Atomically claim the decline transition *before* refunding, so two
+      // concurrent decline requests can't both pass the check above and
+      // both issue a Stripe refund for the same booking.
+      const claimed = await updateBookingStatus(booking.id, "declined", {
+        expectedStatus: ["paid", "accepted"],
+      });
+      if (!claimed) {
+        return res.status(409).json({ error: "This booking was already updated." });
+      }
       const refund = await refundTutoringBooking(booking, stripe, {
         allowMock: allowMockPayments,
       });
-      const updated = await updateBookingStatus(booking.id, "declined");
       notifyTutoringEvent({
         type: "declined_refunded",
         bookingId: booking.id,
         ...notifyDeps(deps),
       }).catch((e) => console.error("[notify declined]", e));
       res.json({
-        booking: enrichBooking(updated, users, findUserById),
+        booking: enrichBooking(claimed, users, findUserById),
         refund,
       });
     } catch (e) {
@@ -477,7 +548,12 @@ export function registerTutoringRoutes(app, deps) {
       if (booking.status !== "accepted") {
         return res.status(409).json({ error: "Only accepted sessions can be marked complete." });
       }
-      const updated = await updateBookingStatus(booking.id, "completed");
+      const updated = await updateBookingStatus(booking.id, "completed", {
+        expectedStatus: "accepted",
+      });
+      if (!updated) {
+        return res.status(409).json({ error: "This booking was already updated." });
+      }
       await creditTutoringSession({
         tutorId: booking.tutorId,
         bookingId: booking.id,
@@ -635,13 +711,18 @@ export function registerTutoringRoutes(app, deps) {
           u.offersOneToOne &&
           normalizeHourlyRateCents(u.hourlyRateCents) >= STRIPE_MIN_AMOUNT_CENTS_MYR
       );
+      const tutorIds = tutors.map((u) => u.id);
+      const [slotsByTutor, statsByTutor] = await Promise.all([
+        listAvailabilityForTutors(tutorIds),
+        getTutorReviewStatsForTutors(tutorIds),
+      ]);
       const out = [];
       for (const u of tutors) {
-        const slots = await listAvailabilityForTutor(u.id);
+        const slots = slotsByTutor.get(String(u.id)) || [];
         if (slots.length === 0) continue;
         const profile = toPublicTutorProfile(u);
         if (!profile) continue;
-        const stats = await getTutorReviewStats(u.id);
+        const stats = statsByTutor.get(String(u.id)) || { reviewCount: 0, averageRating: 0 };
         out.push({
           ...profile,
           ...stats,

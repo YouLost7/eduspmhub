@@ -94,7 +94,7 @@ export function registerPaymentRoutes(app, deps) {
     loadUsers,
     findUserById,
     loadEnrollments,
-    saveEnrollments,
+    addCourseEnrollment,
     loadEducatorCourses,
     CATALOG,
     APP_BASE_URL,
@@ -102,6 +102,7 @@ export function registerPaymentRoutes(app, deps) {
     STRIPE_WEBHOOK_SECRET,
     isProd,
     allowMockPayments = !isProd,
+    checkoutLimiter,
   } = deps;
   if ((!STRIPE_SECRET_KEY || !STRIPE_WEBHOOK_SECRET) && isProd) {
     throw new Error(
@@ -145,13 +146,7 @@ export function registerPaymentRoutes(app, deps) {
       currency,
       paidAt: now,
     });
-    const enroll = await loadEnrollments();
-    const list = enroll[userId] || [];
-    if (!list.includes(courseId)) {
-      list.push(courseId);
-      enroll[userId] = list;
-      await saveEnrollments(enroll);
-    }
+    await addCourseEnrollment(userId, courseId);
     const course = await resolveCourseForCheckout(courseId);
     if (course?.educatorId && amountCents > 0) {
       await creditCourseSale({
@@ -227,13 +222,7 @@ export function registerPaymentRoutes(app, deps) {
       paidAt,
     });
 
-    const enroll = await loadEnrollments();
-    const list = enroll[userId] || [];
-    if (!list.includes(courseId)) {
-      list.push(courseId);
-      enroll[userId] = list;
-      await saveEnrollments(enroll);
-    }
+    await addCourseEnrollment(userId, courseId);
     if (course?.educatorId && amountCents > 0) {
       await creditCourseSale({
         educatorId: course.educatorId,
@@ -276,7 +265,7 @@ export function registerPaymentRoutes(app, deps) {
     }
   }
 
-  app.post("/api/payments/checkout", requireAuth, async (req, res) => {
+  app.post("/api/payments/checkout", requireAuth, checkoutLimiter, async (req, res) => {
     try {
       const userId = req.session.userId;
       const users = await loadUsers();
@@ -340,7 +329,6 @@ export function registerPaymentRoutes(app, deps) {
 
       const session = await stripe.checkout.sessions.create({
         mode: "payment",
-        payment_method_types: ["card"],
         client_reference_id: String(userId),
         metadata: {
           userId: String(userId),

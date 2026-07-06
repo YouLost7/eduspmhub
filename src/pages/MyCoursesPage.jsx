@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { Link, useSearchParams } from "react-router-dom";
 import { apiJson } from "../api.js";
@@ -24,14 +24,23 @@ export default function MyCoursesPage() {
   const [courses, setCourses] = useState([]);
   const [err, setErr] = useState("");
   const [okMsg, setOkMsg] = useState("");
+  const [loading, setLoading] = useState(true);
+  const requestIdRef = useRef(0);
   const isEducator = user?.role === "educator";
 
   const load = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
+    setLoading(true);
+    setErr("");
     try {
       const data = await apiJson("/api/my-courses");
+      if (requestIdRef.current !== requestId) return;
       setCourses(data.courses || []);
     } catch (e) {
+      if (requestIdRef.current !== requestId) return;
       setErr(e.message);
+    } finally {
+      if (requestIdRef.current === requestId) setLoading(false);
     }
   }, []);
 
@@ -120,7 +129,9 @@ export default function MyCoursesPage() {
 
       <section className="section-block my-list">
         <h2>{t("myCourses.yourEnrolments")}</h2>
-        {courses.length === 0 ? (
+        {loading ? (
+          <p className="field-hint">{t("common.loading")}</p>
+        ) : courses.length === 0 ? (
           <p className="empty-list">{t("myCourses.empty")}</p>
         ) : (
           <ul className="enrol-list">

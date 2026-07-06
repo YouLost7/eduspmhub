@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { apiJson, friendlyNonJsonApiMessage } from "../api.js";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -45,6 +45,10 @@ export default function MarketplaceSellPage() {
   const [err, setErr] = useState("");
   const [okMsg, setOkMsg] = useState("");
   const [busy, setBusy] = useState(false);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [digitalBusy, setDigitalBusy] = useState(false);
+  const [removingId, setRemovingId] = useState("");
+  const loadListingRequestRef = useRef(0);
 
   const loadMeta = useCallback(async () => {
     const data = await apiJson("/api/marketplace/meta");
@@ -75,7 +79,12 @@ export default function MarketplaceSellPage() {
 
   const loadListing = useCallback(async () => {
     if (!editId) return;
+    // Guards against a slow response for a previously-edited listing
+    // overwriting the form after the `?edit=` URL has already moved on to
+    // a different listing.
+    const requestId = ++loadListingRequestRef.current;
     const data = await apiJson(`/api/marketplace/listings/${encodeURIComponent(editId)}`);
+    if (loadListingRequestRef.current !== requestId) return;
     const L = data.listing;
     if (!L) return;
     setListing(L);
@@ -95,7 +104,7 @@ export default function MarketplaceSellPage() {
   }, [editId]);
 
   useEffect(() => {
-    loadMeta().catch(() => {});
+    loadMeta().catch((e) => console.error("[marketplace] could not load meta", e));
   }, [loadMeta]);
 
   useEffect(() => {
@@ -137,7 +146,7 @@ export default function MarketplaceSellPage() {
         setListing(data.listing);
         setOkMsg(t("marketplace.listingCreated"));
       }
-      loadMyListings().catch(() => {});
+      loadMyListings().catch((e) => console.error("[marketplace] could not refresh listings", e));
     } catch (e) {
       setErr(e.message);
     } finally {
@@ -164,7 +173,7 @@ export default function MarketplaceSellPage() {
       });
       setListing(data.listing);
       setOkMsg(t("marketplace.publishedSuccess"));
-      loadMyListings().catch(() => {});
+      loadMyListings().catch((e) => console.error("[marketplace] could not refresh listings", e));
     } catch (e) {
       setErr(e.message);
     } finally {
@@ -173,16 +182,20 @@ export default function MarketplaceSellPage() {
   }
 
   async function removeListing(id) {
+    if (removingId) return;
     if (!window.confirm(t("marketplace.removeConfirm"))) return;
+    setRemovingId(id);
     try {
       await apiJson(`/api/marketplace/listings/${id}`, {
         method: "PATCH",
         body: { remove: true },
       });
       setOkMsg(t("marketplace.listingRemoved"));
-      loadMyListings();
+      await loadMyListings();
     } catch (e) {
       setErr(e.message);
+    } finally {
+      setRemovingId("");
     }
   }
 
@@ -230,25 +243,31 @@ export default function MarketplaceSellPage() {
       setErr(t("marketplace.saveDraftFirstPhotos"));
       return;
     }
-    const fd = new FormData();
-    fd.append("photo", file);
-    const res = await fetch(`/api/marketplace/listings/${listing.id}/photos`, {
-      method: "POST",
-      credentials: "include",
-      body: fd,
-    });
-    const raw = await res.text();
-    let data = {};
+    if (photoBusy) return;
+    setPhotoBusy(true);
     try {
-      data = raw ? JSON.parse(raw) : {};
-    } catch {
-      data = {};
+      const fd = new FormData();
+      fd.append("photo", file);
+      const res = await fetch(`/api/marketplace/listings/${listing.id}/photos`, {
+        method: "POST",
+        credentials: "include",
+        body: fd,
+      });
+      const raw = await res.text();
+      let data = {};
+      try {
+        data = raw ? JSON.parse(raw) : {};
+      } catch {
+        data = {};
+      }
+      if (!res.ok) {
+        throw new Error(data.error || friendlyNonJsonApiMessage(raw) || t("marketplace.photoUploadFailed"));
+      }
+      setListing(data.listing);
+      setOkMsg(t("marketplace.photoAdded"));
+    } finally {
+      setPhotoBusy(false);
     }
-    if (!res.ok) {
-      throw new Error(data.error || friendlyNonJsonApiMessage(raw) || t("marketplace.photoUploadFailed"));
-    }
-    setListing(data.listing);
-    setOkMsg(t("marketplace.photoAdded"));
   }
 
   async function uploadDigital(file) {
@@ -256,25 +275,31 @@ export default function MarketplaceSellPage() {
       setErr(t("marketplace.saveDraftFirstFile"));
       return;
     }
-    const fd = new FormData();
-    fd.append("file", file);
-    const res = await fetch(`/api/marketplace/listings/${listing.id}/digital`, {
-      method: "POST",
-      credentials: "include",
-      body: fd,
-    });
-    const raw = await res.text();
-    let data = {};
+    if (digitalBusy) return;
+    setDigitalBusy(true);
     try {
-      data = raw ? JSON.parse(raw) : {};
-    } catch {
-      data = {};
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`/api/marketplace/listings/${listing.id}/digital`, {
+        method: "POST",
+        credentials: "include",
+        body: fd,
+      });
+      const raw = await res.text();
+      let data = {};
+      try {
+        data = raw ? JSON.parse(raw) : {};
+      } catch {
+        data = {};
+      }
+      if (!res.ok) {
+        throw new Error(data.error || friendlyNonJsonApiMessage(raw) || t("marketplace.fileUploadFailed"));
+      }
+      setListing(data.listing);
+      setOkMsg(t("marketplace.digitalUploaded"));
+    } finally {
+      setDigitalBusy(false);
     }
-    if (!res.ok) {
-      throw new Error(data.error || friendlyNonJsonApiMessage(raw) || t("marketplace.fileUploadFailed"));
-    }
-    setListing(data.listing);
-    setOkMsg(t("marketplace.digitalUploaded"));
   }
 
   const priceHint =
@@ -354,9 +379,10 @@ export default function MarketplaceSellPage() {
                       <button
                         type="button"
                         className="btn btn-secondary"
+                        disabled={removingId === L.id}
                         onClick={() => removeListing(L.id)}
                       >
-                        {t("marketplace.remove")}
+                        {removingId === L.id ? t("common.saving") : t("marketplace.remove")}
                       </button>
                     )}
                   </div>
@@ -616,12 +642,14 @@ export default function MarketplaceSellPage() {
               <input
                 type="file"
                 accept="image/jpeg,image/png,image/webp"
+                disabled={photoBusy}
                 onChange={(e) => {
                   const f = e.target.files?.[0];
                   if (f) uploadPhoto(f).catch((ex) => setErr(ex.message));
                   e.target.value = "";
                 }}
               />
+              {photoBusy ? <span className="field-hint">{t("common.saving")}</span> : null}
             </label>
             {form.itemType === "digital" && (
               <label>
@@ -629,12 +657,14 @@ export default function MarketplaceSellPage() {
                 <input
                   type="file"
                   accept=".pdf,.zip,application/pdf,application/zip"
+                  disabled={digitalBusy}
                   onChange={(e) => {
                     const f = e.target.files?.[0];
                     if (f) uploadDigital(f).catch((ex) => setErr(ex.message));
                     e.target.value = "";
                   }}
                 />
+                {digitalBusy ? <span className="field-hint">{t("common.saving")}</span> : null}
               </label>
             )}
           </div>
@@ -642,7 +672,7 @@ export default function MarketplaceSellPage() {
           {listing?.photoUrls?.length > 0 && (
             <div className="marketplace-detail-photos">
               {listing.photoUrls.map((url) => (
-                <img key={url} src={url} alt="" className="marketplace-detail-photo" />
+                <img key={url} src={url} alt="" className="marketplace-detail-photo" loading="lazy" />
               ))}
             </div>
           )}

@@ -59,25 +59,59 @@ export async function listAvailabilityForTutor(tutorId) {
   return rows.map(rowToSlot);
 }
 
+const MAX_AVAILABILITY_SLOTS = 40;
+
+/**
+ * Batched version of `listAvailabilityForTutor` for N tutors in one query
+ * instead of N — used by the tutoring browse list.
+ */
+export async function listAvailabilityForTutors(tutorIds) {
+  const ids = [...new Set((tutorIds || []).map((id) => String(id)).filter(Boolean))];
+  const map = new Map();
+  if (!ids.length) return map;
+  const db = await getDb();
+  const placeholders = ids.map(() => "?").join(", ");
+  const rows = await sqlite.all(
+    db,
+    `SELECT id, tutor_id, day_of_week, start_minutes, end_minutes
+       FROM tutor_availability
+      WHERE tutor_id IN (${placeholders})
+      ORDER BY tutor_id ASC, day_of_week ASC, start_minutes ASC`,
+    ids
+  );
+  for (const row of rows) {
+    const key = String(row.tutor_id);
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(rowToSlot(row));
+  }
+  return map;
+}
+
 export async function replaceAvailabilityForTutor(tutorId, slots) {
   const db = await getDb();
   const normalized = [];
-  for (const raw of slots || []) {
+  // Cap input size before doing any DB work — an unbounded array here would
+  // otherwise let a single request queue up arbitrarily many DELETE+INSERT
+  // statements.
+  for (const raw of (slots || []).slice(0, MAX_AVAILABILITY_SLOTS)) {
     const s = normalizeSlotInput(raw);
     if (!s) continue;
     normalized.push(s);
   }
-  await sqlite.run(db, "DELETE FROM tutor_availability WHERE tutor_id = ?", [
-    String(tutorId),
-  ]);
-  for (const s of normalized) {
-    await sqlite.run(
-      db,
-      `INSERT INTO tutor_availability (id, tutor_id, day_of_week, start_minutes, end_minutes)
-       VALUES (?, ?, ?, ?, ?)`,
-      [randomUUID(), String(tutorId), s.dayOfWeek, s.startMinutes, s.endMinutes]
-    );
-  }
+  // Wrapped in a transaction: without this, a crash or error partway
+  // through leaves the tutor with only some (or none) of their windows
+  // saved, since the old ones are already deleted by the time the inserts
+  // run.
+  await sqlite.withTransaction(db, async (tx) => {
+    await tx.run("DELETE FROM tutor_availability WHERE tutor_id = ?", [String(tutorId)]);
+    for (const s of normalized) {
+      await tx.run(
+        `INSERT INTO tutor_availability (id, tutor_id, day_of_week, start_minutes, end_minutes)
+         VALUES (?, ?, ?, ?, ?)`,
+        [randomUUID(), String(tutorId), s.dayOfWeek, s.startMinutes, s.endMinutes]
+      );
+    }
+  });
   return listAvailabilityForTutor(tutorId);
 }
 
@@ -173,6 +207,67 @@ export async function listBookableSlots(tutorId, hours, daysAhead = DEFAULT_DAYS
   }
 
   return out;
+}
+
+/**
+ * Atomically re-checks for booking conflicts and inserts the booking row in
+ * one transaction, holding a Postgres advisory lock scoped to this tutor for
+ * the duration. This is what actually prevents double-booking: the plain
+ * `validateBookingAgainstAvailability` check below is a read that two
+ * concurrent requests can both pass before either writes a booking row, so
+ * it can't be relied on alone for the final reservation.
+ */
+export async function reserveTutoringBooking({
+  tutorId,
+  scheduledStart,
+  scheduledEnd,
+  insertParams,
+}) {
+  const db = await getDb();
+  return sqlite.withTransaction(db, async (tx) => {
+    // Released automatically at commit/rollback; serializes concurrent
+    // booking attempts for the same tutor so only one can win the conflict
+    // check below.
+    await tx.run("SELECT pg_advisory_xact_lock(hashtext(?))", [String(tutorId)]);
+
+    const conflicts = await tx.all(
+      `SELECT id FROM tutoring_bookings
+       WHERE tutor_id = ?
+         AND status IN ('paid', 'accepted')
+         AND scheduled_start < ?
+         AND scheduled_end > ?`,
+      [String(tutorId), String(scheduledEnd), String(scheduledStart)]
+    );
+    if (conflicts.length > 0) {
+      return { ok: false, error: "That time slot is already booked. Choose another start time." };
+    }
+
+    const now = new Date().toISOString();
+    const bookingId = insertParams.id || randomUUID();
+    await tx.run(
+      `INSERT INTO tutoring_bookings (
+        id, student_id, tutor_id, status, scheduled_start, scheduled_end,
+        hours, hourly_rate_cents, amount_cents, currency, student_message,
+        payment_id, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'myr', ?, ?, ?, ?)`,
+      [
+        bookingId,
+        String(insertParams.studentId),
+        String(tutorId),
+        insertParams.status,
+        String(scheduledStart),
+        String(scheduledEnd),
+        Number(insertParams.hours),
+        Number(insertParams.hourlyRateCents),
+        Number(insertParams.amountCents),
+        String(insertParams.studentMessage || "").slice(0, 2000),
+        insertParams.paymentId ? String(insertParams.paymentId) : null,
+        now,
+        now,
+      ]
+    );
+    return { ok: true, bookingId };
+  });
 }
 
 /** Booking window must fit inside a weekly slot; no overlap with active bookings. */

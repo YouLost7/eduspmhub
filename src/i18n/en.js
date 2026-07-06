@@ -7,6 +7,7 @@ export default {
     contact: "Contact",
     profile: "Profile",
     save: "Save",
+    saving: "Saving…",
     loading: "Loading…",
     loadingSession: "Loading your session…",
     logOut: "Log out",
@@ -219,6 +220,7 @@ export default {
     close: "Close",
     paymentCheckoutMissing: "Payment checkout URL was not returned",
     paymentStartError: "Could not start payment",
+    autoEnrolFailed: "Could not add this course automatically after signing in. Try enrolling again below.",
     openDetailsFor: "Open details for {{title}}",
     devPaymentMode:
       "Dev payment mode: if Stripe keys are not configured, paid courses use a local mock checkout and still grant access for testing.",
@@ -337,6 +339,7 @@ export default {
     ordersTitle: "Marketplace orders",
     ordersLoadError: "Could not load orders",
     paymentConfirmed: "Payment confirmed.",
+    paymentConfirmError: "Could not confirm your payment yet.",
     purchaseComplete: "Purchase complete.",
     markedReady: "Marked ready for pickup.",
     orderCompleted: "Thanks — order completed.",

@@ -101,7 +101,7 @@ export async function listActiveListings({ category, itemType, q } = {}) {
     clauses.push("item_type = ?");
     params.push(itemType);
   }
-  const sql = `SELECT * FROM marketplace_listings WHERE ${clauses.join(" AND ")} ORDER BY created_at DESC`;
+  const sql = `SELECT * FROM marketplace_listings WHERE ${clauses.join(" AND ")} ORDER BY created_at DESC LIMIT 300`;
   const rows = await sqlite.all(db, sql, params);
   let list = rows.map(rowToListing);
   const query = String(q || "").trim().toLowerCase();
@@ -332,30 +332,51 @@ export async function listOrdersForUser(userId) {
     db,
     `SELECT * FROM marketplace_orders
      WHERE buyer_id = ? OR seller_id = ?
-     ORDER BY created_at DESC`,
+     ORDER BY created_at DESC
+     LIMIT 300`,
     [String(userId), String(userId)]
   );
   return rows.map(rowToOrder);
 }
 
-export async function updateOrderStatus(id, { status, sellerReadyAt, completedAt }) {
+/**
+ * @param {string|string[]} [fromStatus] If given, the update only applies
+ *   when the order's current status is one of these (checked atomically in
+ *   the same statement) — guards against two concurrent requests both
+ *   transitioning the same order (e.g. a doubled-up "confirm received"
+ *   click, or racing with a seller action).
+ */
+export async function updateOrderStatus(
+  id,
+  { status, sellerReadyAt, completedAt, fromStatus } = {}
+) {
   const db = await getDb();
   const now = new Date().toISOString();
-  await sqlite.run(
+  const expected = fromStatus
+    ? Array.isArray(fromStatus)
+      ? fromStatus
+      : [fromStatus]
+    : null;
+  const guardClause = expected
+    ? ` AND status IN (${expected.map(() => "?").join(", ")})`
+    : "";
+  const result = await sqlite.run(
     db,
     `UPDATE marketplace_orders SET
       status = COALESCE(?, status),
       seller_ready_at = COALESCE(?, seller_ready_at),
       completed_at = COALESCE(?, completed_at),
       updated_at = ?
-     WHERE id = ?`,
+     WHERE id = ?${guardClause}`,
     [
       status || null,
       sellerReadyAt || null,
       completedAt || null,
       now,
       String(id),
+      ...(expected || []),
     ]
   );
+  if (expected && !(result?.changes > 0)) return null;
   return getOrderById(id);
 }

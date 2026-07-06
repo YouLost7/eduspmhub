@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { StudyTipBanner } from "../components/StudyTipBanner.jsx";
@@ -47,10 +47,16 @@ export default function DashboardPage() {
   });
   const [loadErr, setLoadErr] = useState("");
   const [toast, setToast] = useState(null);
+  const [enrolBusyId, setEnrolBusyId] = useState("");
+  const requestIdRef = useRef(0);
 
   const loadFeatured = useCallback(async () => {
+    // Guards against a slow response overwriting results from a newer
+    // request (e.g. triggered again right after enrolling).
+    const requestId = ++requestIdRef.current;
     try {
       const data = await apiJson("/api/dashboard/featured");
+      if (requestIdRef.current !== requestId) return;
       setFeatured({
         recommended: data.recommended || [],
         popular: data.popular || [],
@@ -58,6 +64,7 @@ export default function DashboardPage() {
       });
       setLoadErr("");
     } catch (e) {
+      if (requestIdRef.current !== requestId) return;
       setLoadErr(e.message || t("dashboard.loadError"));
     }
   }, [t]);
@@ -67,6 +74,8 @@ export default function DashboardPage() {
   }, [loadFeatured, user?.id, user?.studentSubject]);
 
   async function enrolFromDashboard(courseId) {
+    if (enrolBusyId) return;
+    setEnrolBusyId(courseId);
     setToast(null);
     try {
       await apiJson("/api/my-courses/enroll", {
@@ -81,6 +90,8 @@ export default function DashboardPage() {
       } else {
         setToast({ text: e.message || t("dashboard.enrolFailed"), kind: "error" });
       }
+    } finally {
+      setEnrolBusyId("");
     }
   }
 
@@ -337,9 +348,10 @@ export default function DashboardPage() {
                           <button
                             type="button"
                             className="solid-btn"
+                            disabled={Boolean(enrolBusyId)}
                             onClick={() => enrolFromDashboard(c.id)}
                           >
-                            {t("dashboard.enrol")}
+                            {enrolBusyId === c.id ? t("common.saving") : t("dashboard.enrol")}
                           </button>
                         )}
                         {user?.role === "educator" && (
@@ -389,6 +401,7 @@ export default function DashboardPage() {
                             className="educator-photo-thumb"
                             src={profilePhotoSrc(e.id, e.avatarUploadedAt)}
                             alt=""
+                            loading="lazy"
                             width={66}
                             height={66}
                           />

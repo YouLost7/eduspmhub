@@ -27,7 +27,9 @@ export default function ProfilePage() {
     return c > 0 ? (c / 100).toFixed(2) : "";
   });
   const [status, setStatus] = useState({ text: "", ok: true });
+  const [savingSettings, setSavingSettings] = useState(false);
   const [bioStatus, setBioStatus] = useState({ text: "", ok: true });
+  const [savingBio, setSavingBio] = useState(false);
   const [licenseFile, setLicenseFile] = useState(null);
   const [licenseBusy, setLicenseBusy] = useState(false);
   const [licenseStatus, setLicenseStatus] = useState({ text: "", ok: true });
@@ -38,9 +40,19 @@ export default function ProfilePage() {
   const photoInputRef = useRef(null);
 
   const isEducator = user?.role === "educator";
+  // Only seed the form fields once per signed-in user, not on every `user`
+  // object update. `refreshMe()` (fired after photo/licence uploads) sets a
+  // new `user` object for the same account, and re-running this sync would
+  // silently discard any bio/rate/tutoring-toggle edits still in progress.
+  const initializedForUserId = useRef(null);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      initializedForUserId.current = null;
+      return;
+    }
+    if (initializedForUserId.current === user.id) return;
+    initializedForUserId.current = user.id;
     setOffersOneToOne(Boolean(user.offersOneToOne));
     setEducatorBio(user.educatorBio || "");
     const c = Number(user.hourlyRateCents) || 0;
@@ -49,18 +61,24 @@ export default function ProfilePage() {
 
   async function onSubmitBio(e) {
     e.preventDefault();
+    if (savingBio) return;
     setBioStatus({ text: "", ok: true });
+    setSavingBio(true);
     try {
       await updateProfile({ educatorBio });
       setBioStatus({ text: t("profile.bioSaved"), ok: true });
     } catch (err) {
       setBioStatus({ text: err.message || t("profile.saveFailed"), ok: false });
+    } finally {
+      setSavingBio(false);
     }
   }
 
   async function onSubmitTeachingSettings(e) {
     e.preventDefault();
+    if (savingSettings) return;
     setStatus({ text: "", ok: true });
+    setSavingSettings(true);
     try {
       await updateProfile({
         offersOneToOne,
@@ -69,6 +87,8 @@ export default function ProfilePage() {
       setStatus({ text: t("profile.teachingSettingsSaved"), ok: true });
     } catch (err) {
       setStatus({ text: err.message || t("profile.saveFailed"), ok: false });
+    } finally {
+      setSavingSettings(false);
     }
   }
 
@@ -255,8 +275,8 @@ export default function ProfilePage() {
               placeholder={t("profile.bioPlaceholder")}
             />
           </div>
-          <button type="submit" className="solid-btn">
-            {t("profile.saveBio")}
+          <button type="submit" className="solid-btn" disabled={savingBio}>
+            {savingBio ? t("common.saving") : t("profile.saveBio")}
           </button>
           {bioStatus.text && (
             <p className={bioStatus.ok ? "form-success" : "form-error"}>{bioStatus.text}</p>
@@ -361,6 +381,7 @@ export default function ProfilePage() {
               name="license"
               type="file"
               accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png"
+              disabled={licenseBusy}
               onChange={(e) => setLicenseFile(e.target.files?.[0] || null)}
             />
           </div>
@@ -431,8 +452,8 @@ export default function ProfilePage() {
               Manage incoming bookings on <Link to="/bookings">1-on-1 bookings</Link>.
             </p>
           )}
-          <button type="submit" className="solid-btn">
-            Save teaching settings
+          <button type="submit" className="solid-btn" disabled={savingSettings}>
+            {savingSettings ? t("common.saving") : "Save teaching settings"}
           </button>
           {status.text && (
             <p className={status.ok ? "form-success" : "form-error"}>{status.text}</p>

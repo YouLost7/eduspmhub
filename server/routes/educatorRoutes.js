@@ -8,7 +8,8 @@ export function registerEducatorRoutes(app, deps) {
     loadUsers,
     loadEnrollments,
     loadEducatorCourses,
-    saveEducatorCourses,
+    upsertEducatorCourse,
+    deleteEducatorCourseById,
     findUserById,
     getEducatorCourseEnrollmentsSummary,
     mapToManagedRow,
@@ -23,6 +24,7 @@ export function registerEducatorRoutes(app, deps) {
     unlinkOrphanedLessonFiles,
     unlinkCourseLessonAttachments,
     removeCourseIdFromEnrollments,
+    deleteCourseProgressForCourse,
     randomUUID,
     unlink,
   } = deps;
@@ -93,9 +95,7 @@ export function registerEducatorRoutes(app, deps) {
         createdAt: now,
         updatedAt: now,
       };
-      const list = await loadEducatorCourses();
-      list.push(course);
-      await saveEducatorCourses(list);
+      await upsertEducatorCourse(course);
       res.status(201).json({ course: mapToManagedRow(course, u.fullName) });
     } catch (e) {
       console.error(e);
@@ -111,15 +111,7 @@ export function registerEducatorRoutes(app, deps) {
       try {
         const { title, description, subject, price, lessons, thumb, status, lessonPages } =
           req.body || {};
-        const list = req.ecList;
         const course = req.ecCourse;
-        const idx = list.findIndex((c) => c.id === course.id);
-        if (idx === -1) {
-          console.error("PATCH educator course: course missing from list", course.id);
-          return res
-            .status(500)
-            .json({ error: "Server could not update course (store mismatch)" });
-        }
         const mergeMediaFrom = [...(course.lessonPages || [])];
         if (title != null) {
           const nt = String(title).trim();
@@ -171,8 +163,7 @@ export function registerEducatorRoutes(app, deps) {
           );
         }
         course.updatedAt = new Date().toISOString();
-        list[idx] = course;
-        await saveEducatorCourses(list);
+        await upsertEducatorCourse(course);
         res.json({ course: mapToManagedRow(course, req.ecUser.fullName) });
       } catch (e) {
         console.error(e);
@@ -195,7 +186,6 @@ export function registerEducatorRoutes(app, deps) {
         }
         const lessonIndex = Number.parseInt(req.params.lessonIndex, 10);
         const course = req.ecCourse;
-        const list = req.ecList;
         if (
           !Number.isFinite(lessonIndex) ||
           lessonIndex < 0 ||
@@ -224,9 +214,7 @@ export function registerEducatorRoutes(app, deps) {
         delete pages[lessonIndex].embedVideo;
         course.lessonPages = pages;
         course.updatedAt = new Date().toISOString();
-        const idx = list.findIndex((c) => c.id === course.id);
-        list[idx] = course;
-        await saveEducatorCourses(list);
+        await upsertEducatorCourse(course);
         res.json({
           lessonIndex,
           hasPdf: true,
@@ -249,7 +237,6 @@ export function registerEducatorRoutes(app, deps) {
       try {
         const lessonIndex = Number.parseInt(req.params.lessonIndex, 10);
         const course = req.ecCourse;
-        const list = req.ecList;
         if (
           !Number.isFinite(lessonIndex) ||
           lessonIndex < 0 ||
@@ -264,9 +251,7 @@ export function registerEducatorRoutes(app, deps) {
         delete pages[lessonIndex].pdfOriginalName;
         course.lessonPages = pages;
         course.updatedAt = new Date().toISOString();
-        const idx = list.findIndex((c) => c.id === course.id);
-        list[idx] = course;
-        await saveEducatorCourses(list);
+        await upsertEducatorCourse(course);
         res.json({ course: mapToManagedRow(course, req.ecUser.fullName) });
       } catch (e) {
         console.error(e);
@@ -289,7 +274,6 @@ export function registerEducatorRoutes(app, deps) {
         }
         const lessonIndex = Number.parseInt(req.params.lessonIndex, 10);
         const course = req.ecCourse;
-        const list = req.ecList;
         if (
           !Number.isFinite(lessonIndex) ||
           lessonIndex < 0 ||
@@ -318,9 +302,7 @@ export function registerEducatorRoutes(app, deps) {
         delete pages[lessonIndex].embedVideo;
         course.lessonPages = pages;
         course.updatedAt = new Date().toISOString();
-        const idx = list.findIndex((c) => c.id === course.id);
-        list[idx] = course;
-        await saveEducatorCourses(list);
+        await upsertEducatorCourse(course);
         res.json({
           lessonIndex,
           hasVideo: true,
@@ -343,7 +325,6 @@ export function registerEducatorRoutes(app, deps) {
       try {
         const lessonIndex = Number.parseInt(req.params.lessonIndex, 10);
         const course = req.ecCourse;
-        const list = req.ecList;
         if (
           !Number.isFinite(lessonIndex) ||
           lessonIndex < 0 ||
@@ -358,9 +339,7 @@ export function registerEducatorRoutes(app, deps) {
         delete pages[lessonIndex].videoOriginalName;
         course.lessonPages = pages;
         course.updatedAt = new Date().toISOString();
-        const idx = list.findIndex((c) => c.id === course.id);
-        list[idx] = course;
-        await saveEducatorCourses(list);
+        await upsertEducatorCourse(course);
         res.json({ course: mapToManagedRow(course, req.ecUser.fullName) });
       } catch (e) {
         console.error(e);
@@ -377,9 +356,9 @@ export function registerEducatorRoutes(app, deps) {
       try {
         const id = req.params.id;
         await unlinkCourseLessonAttachments(req.ecCourse);
-        const list = req.ecList.filter((c) => c.id !== id);
-        await saveEducatorCourses(list);
+        await deleteEducatorCourseById(id);
         await removeCourseIdFromEnrollments(id);
+        await deleteCourseProgressForCourse(id);
         res.json({ ok: true });
       } catch (e) {
         console.error(e);

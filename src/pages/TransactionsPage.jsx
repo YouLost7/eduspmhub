@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiJson } from "../api.js";
 import { useI18n } from "../i18n/I18nContext.jsx";
 
@@ -8,6 +8,7 @@ export default function TransactionsPage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [receiptDetails, setReceiptDetails] = useState({});
+  const requestIdRef = useRef(0);
 
   const prettyStatus = useCallback(
     (status) => {
@@ -21,15 +22,18 @@ export default function TransactionsPage() {
   );
 
   const load = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     setErr("");
     try {
       const data = await apiJson("/api/payments/transactions");
+      if (requestIdRef.current !== requestId) return;
       setRows(Array.isArray(data.transactions) ? data.transactions : []);
     } catch (e) {
+      if (requestIdRef.current !== requestId) return;
       setErr(e.message || t("transactions.loadError"));
     } finally {
-      setLoading(false);
+      if (requestIdRef.current === requestId) setLoading(false);
     }
   }, [t]);
 

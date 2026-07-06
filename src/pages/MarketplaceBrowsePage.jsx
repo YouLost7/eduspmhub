@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { apiJson } from "../api.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useI18n } from "../i18n/I18nContext.jsx";
+
+const SEARCH_DEBOUNCE_MS = 300;
 
 export default function MarketplaceBrowsePage() {
   const { user } = useAuth();
@@ -13,31 +15,47 @@ export default function MarketplaceBrowsePage() {
   const [category, setCategory] = useState("");
   const [itemType, setItemType] = useState("");
   const [q, setQ] = useState("");
+  const [debouncedQ, setDebouncedQ] = useState("");
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(true);
+  const requestIdRef = useRef(0);
+
+  // Wait for typing to pause before searching, instead of firing a request
+  // on every keystroke.
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedQ(q), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(id);
+  }, [q]);
+
+  const searchNow = useCallback(() => setDebouncedQ(q), [q]);
 
   const load = useCallback(async () => {
+    // Tracks which call is the most recent one, so a slower response for an
+    // older query/filter combination can never overwrite a newer result.
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     setErr("");
     try {
       const params = new URLSearchParams();
       if (category) params.set("category", category);
       if (itemType) params.set("itemType", itemType);
-      if (q.trim()) params.set("q", q.trim());
+      if (debouncedQ.trim()) params.set("q", debouncedQ.trim());
       const qs = params.toString();
       const [listData, metaData] = await Promise.all([
         apiJson(`/api/marketplace/listings${qs ? `?${qs}` : ""}`),
         apiJson("/api/marketplace/meta"),
       ]);
+      if (requestIdRef.current !== requestId) return;
       setListings(Array.isArray(listData.listings) ? listData.listings : []);
       setMeta(metaData);
     } catch (e) {
+      if (requestIdRef.current !== requestId) return;
       setListings([]);
       setErr(e.message || t("marketplace.loadError"));
     } finally {
-      setLoading(false);
+      if (requestIdRef.current === requestId) setLoading(false);
     }
-  }, [category, itemType, q, t]);
+  }, [category, itemType, debouncedQ, t]);
 
   useEffect(() => {
     load();
@@ -68,7 +86,7 @@ export default function MarketplaceBrowsePage() {
           placeholder={t("marketplace.searchPlaceholder")}
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && load()}
+          onKeyDown={(e) => e.key === "Enter" && searchNow()}
         />
         <select
           className="input"

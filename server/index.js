@@ -12,9 +12,13 @@ import { fileURLToPath } from "node:url";
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import {
   loadUsers,
-  saveUsers,
+  getUserById,
+  insertUser,
+  updateUser,
   loadEnrollments,
-  saveEnrollments,
+  addCourseEnrollment,
+  removeCourseFromAllEnrollments,
+  isUserEnrolledInCourse,
   findUserByEmail,
   findUserById,
   toPublicUser,
@@ -29,7 +33,9 @@ import {
 import { buildFeaturedPayload } from "./featured.js";
 import {
   loadEducatorCourses,
-  saveEducatorCourses,
+  getEducatorCourseById,
+  upsertEducatorCourse,
+  deleteEducatorCourseById,
   mapPublishedToCatalogShape,
   mapToManagedRow,
   normalizePrice,
@@ -43,6 +49,7 @@ import {
 import { getEducatorCourseEnrollmentsSummary } from "./enrollmentSummary.js";
 import { PostgresSessionStore } from "./sessionStore.js";
 import { hasPurchaseEntitlement } from "./payments/store.js";
+import { deleteCourseProgressForCourse } from "./courseProgress.js";
 import { registerAuthAdminRoutes } from "./routes/authAdminRoutes.js";
 import { registerProfileRoutes } from "./routes/profileRoutes.js";
 import { registerEducatorRoutes } from "./routes/educatorRoutes.js";
@@ -474,6 +481,16 @@ const adminLimiter = makeLimiter({
   max: 60,
   message: "Too many admin requests. Please slow down and try again shortly.",
 });
+const checkoutLimiter = makeLimiter({
+  windowMs: 10 * 60 * 1000,
+  max: 30,
+  message: "Too many checkout attempts. Please slow down and try again shortly.",
+});
+const withdrawalLimiter = makeLimiter({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  message: "Too many withdrawal requests. Please try again later.",
+});
 
 app.use("/api", apiCors);
 app.use(
@@ -601,18 +618,7 @@ async function resolveStudentEnrolledCourseRow(courseId, users, ecList) {
 }
 
 async function removeCourseIdFromEnrollments(courseId) {
-  const enroll = await loadEnrollments();
-  let changed = false;
-  for (const uid of Object.keys(enroll)) {
-    const list = enroll[uid];
-    if (!Array.isArray(list)) continue;
-    const next = list.filter((id) => id !== courseId);
-    if (next.length !== list.length) {
-      enroll[uid] = next;
-      changed = true;
-    }
-  }
-  if (changed) await saveEnrollments(enroll);
+  await removeCourseFromAllEnrollments(courseId);
 }
 
 async function unlinkLessonPdfFile(key) {
@@ -652,19 +658,15 @@ async function unlinkOrphanedLessonFiles(prevPages, nextPages) {
 /** Student (enrolled + published) or owning educator — same rules as lesson viewer. */
 async function courseAccessContext(userId, courseId) {
   const id = typeof courseId === "string" ? courseId.trim() : courseId;
-  const users = await loadUsers();
-  const u = findUserById(users, userId);
+  const u = await getUserById(userId);
   if (!u) return { err: 401, msg: "Unauthorized" };
-  const list = await loadEducatorCourses();
-  const c = list.find((x) => x.id === id);
+  const c = await getEducatorCourseById(id);
   if (!c) return { err: 404, msg: "Course not found" };
   const owner = u.role === "educator" && c.educatorId === u.id;
   let ok = false;
   if (owner) ok = true;
   else if (u.role === "student") {
-    const enroll = await loadEnrollments();
-    const ids = enroll[u.id] || [];
-    if (ids.includes(id) && c.status === "published") ok = true;
+    if (c.status === "published" && (await isUserEnrolledInCourse(u.id, id))) ok = true;
     else if (c.status === "published" && (await hasPurchaseEntitlement(u.id, id))) ok = true;
   }
   if (!ok) {
@@ -674,25 +676,22 @@ async function courseAccessContext(userId, courseId) {
         "You cannot open this course. Enrol from Browse while signed in as a student, or sign in as the educator who owns it.",
     };
   }
-  return { user: u, course: c, list };
+  return { user: u, course: c };
 }
 
 async function loadOwnedEducatorCourse(req, res, next) {
   try {
-    const users = await loadUsers();
-    const u = findUserById(users, req.session.userId);
+    const u = await getUserById(req.session.userId);
     if (!u || u.role !== "educator") {
       return res.status(403).json({ error: "Educator access only" });
     }
     const id = typeof req.params.id === "string" ? req.params.id.trim() : req.params.id;
-    const list = await loadEducatorCourses();
-    const course = list.find((c) => c.id === id);
+    const course = await getEducatorCourseById(id);
     if (!course) return res.status(404).json({ error: "Course not found" });
     if (course.educatorId !== u.id) {
       return res.status(403).json({ error: "Not your course" });
     }
     req.ecCourse = course;
-    req.ecList = list;
     req.ecUser = u;
     next();
   } catch (e) {
@@ -721,10 +720,13 @@ const authAdminDeps = {
   loginLimiter,
   adminLimiter,
   ADMIN_KEY,
+  isProd: IS_PROD,
   LICENSE_DIR,
   isSafeLicenseStorageKey,
   loadUsers,
-  saveUsers,
+  getUserById,
+  insertUser,
+  updateUser,
   findUserByEmail,
   findUserById,
   toPublicUser,
@@ -742,7 +744,7 @@ const profileDeps = {
   runLicenseUpload,
   runProfilePhotoUpload,
   loadUsers,
-  saveUsers,
+  updateUser,
   findUserById,
   toPublicUser,
   unlink,
@@ -768,7 +770,8 @@ const educatorDeps = {
   loadUsers,
   loadEnrollments,
   loadEducatorCourses,
-  saveEducatorCourses,
+  upsertEducatorCourse,
+  deleteEducatorCourseById,
   findUserById,
   getEducatorCourseEnrollmentsSummary,
   mapToManagedRow,
@@ -783,6 +786,7 @@ const educatorDeps = {
   unlinkOrphanedLessonFiles,
   unlinkCourseLessonAttachments,
   removeCourseIdFromEnrollments,
+  deleteCourseProgressForCourse,
   randomUUID,
   unlink,
 };
@@ -791,8 +795,9 @@ const courseDeps = {
   requireAuth,
   CATALOG,
   loadUsers,
+  getUserById,
   loadEnrollments,
-  saveEnrollments,
+  addCourseEnrollment,
   loadEducatorCourses,
   findUserById,
   toPublicTutorProfile,
@@ -825,13 +830,14 @@ registerPaymentRoutes(app, {
   loadUsers,
   findUserById,
   loadEnrollments,
-  saveEnrollments,
+  addCourseEnrollment,
   loadEducatorCourses,
   CATALOG,
   APP_BASE_URL,
   STRIPE_SECRET_KEY,
   STRIPE_WEBHOOK_SECRET,
   isProd: IS_PROD,
+  checkoutLimiter,
 });
 registerTutoringRoutes(app, {
   requireAuth,
@@ -841,6 +847,7 @@ registerTutoringRoutes(app, {
   APP_BASE_URL,
   STRIPE_SECRET_KEY,
   isProd: IS_PROD,
+  checkoutLimiter,
 });
 
 const marketplacePhotoUpload = multer({
@@ -915,6 +922,8 @@ registerMarketplaceRoutes(app, {
   runMarketplacePhotoUpload,
   runMarketplaceDigitalUpload,
   adminLimiter,
+  checkoutLimiter,
+  withdrawalLimiter,
   ADMIN_KEY,
 });
 

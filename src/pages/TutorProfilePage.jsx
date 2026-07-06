@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { apiJson } from "../api.js";
@@ -29,25 +29,31 @@ export default function TutorProfilePage() {
   const [hours, setHours] = useState("1");
   const [selectedSlotStart, setSelectedSlotStart] = useState("");
   const [message, setMessage] = useState("");
+  const requestIdRef = useRef(0);
 
   const load = useCallback(async () => {
     if (!tutorId) return;
+    // Guards against a slow response for a tutor page the student has
+    // navigated away from overwriting the one they're now viewing.
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     setErr("");
     try {
       const data = await apiJson(`/api/tutors/${encodeURIComponent(tutorId)}`);
+      if (requestIdRef.current !== requestId) return;
       setTutor(data.tutor || null);
       setCourses(Array.isArray(data.courses) ? data.courses : []);
       setReviews(Array.isArray(data.reviews) ? data.reviews : []);
       setAvailability(Array.isArray(data.availability) ? data.availability : []);
     } catch (e) {
+      if (requestIdRef.current !== requestId) return;
       setTutor(null);
       setCourses([]);
       setReviews([]);
       setAvailability([]);
       setErr(e.message || t("tutor.loadError"));
     } finally {
-      setLoading(false);
+      if (requestIdRef.current === requestId) setLoading(false);
     }
   }, [tutorId, t]);
 

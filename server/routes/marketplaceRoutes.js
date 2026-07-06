@@ -9,6 +9,7 @@ import {
   CATEGORY_IDS,
   MAX_PHOTOS,
   MAX_TITLE_LEN,
+  MAX_DESC_LEN,
 } from "../marketplace/constants.js";
 import {
   formatMoneyLabel,
@@ -29,8 +30,13 @@ import {
   isSafeMarketplacePhotoKey,
   isSafeMarketplaceDigitalKey,
 } from "../marketplace/uploads.js";
+import { secretEquals } from "../validation.js";
 import { upsertPaymentRecord, getPaymentBySessionId } from "../payments/store.js";
-import { createStripeClient, fetchStripeReceiptUrl } from "../payments/stripe.js";
+import {
+  createStripeClient,
+  fetchStripeReceiptUrl,
+  refundStripePaymentIntent,
+} from "../payments/stripe.js";
 import { priceToCents } from "../payments/store.js";
 import {
   insertReport,
@@ -170,20 +176,38 @@ export async function grantPaidMarketplaceFromSession(session, deps) {
   const listing = await getListingById(listingId);
   if (!listing) throw new Error("Listing not found for paid session");
 
-  const sold = await markListingSold(listingId);
-  if (!sold && listing.status !== "sold") {
-    throw new Error("Listing is no longer available");
-  }
-  if (!sold && listing.status === "sold") {
-    throw new Error("Listing is no longer available");
-  }
-
   const existing = await getPaymentBySessionId("stripe", sessionId);
   const amountCents = Number(
     session?.amount_total ?? existing?.amount_cents ?? m.amountCents ?? listing.priceCents
   );
   const currency = String(session?.currency || existing?.currency || "myr").toLowerCase();
   const paidAt = new Date().toISOString();
+
+  // markListingSold is an atomic `UPDATE ... WHERE status = 'active'`, so if
+  // two buyers' payments both land around the same time only one can win
+  // this. The loser was already charged by Stripe, so refund them instead
+  // of leaving them charged for an item they can never receive.
+  const sold = await markListingSold(listingId);
+  if (!sold) {
+    const refunded = await refundStripePaymentIntent(stripe, paymentIntentId);
+    await upsertPaymentRecord({
+      id: existing?.id || randomUUID(),
+      provider: "stripe",
+      providerSessionId: sessionId,
+      providerPaymentIntentId: paymentIntentId || null,
+      providerEventId,
+      userId: buyerId,
+      courseId: marketplacePaymentCourseId(orderId),
+      courseTitle: `Marketplace: ${listing.title}`,
+      amountCents,
+      currency,
+      status: refunded ? "refunded" : "failed",
+      paymentMethodType: "card",
+      rawPayload: session,
+      paidAt: null,
+    });
+    throw new Error("Listing is no longer available");
+  }
   let receiptUrl = null;
   if (stripe && paymentIntentId) {
     receiptUrl = await fetchStripeReceiptUrl(stripe, paymentIntentId);
@@ -238,6 +262,8 @@ export function registerMarketplaceRoutes(app, deps) {
     runMarketplacePhotoUpload,
     runMarketplaceDigitalUpload,
     adminLimiter,
+    checkoutLimiter,
+    withdrawalLimiter,
     ADMIN_KEY,
   } = deps;
 
@@ -298,7 +324,7 @@ export function registerMarketplaceRoutes(app, deps) {
     }
   });
 
-  app.post("/api/marketplace/withdrawals", requireAuth, async (req, res) => {
+  app.post("/api/marketplace/withdrawals", requireAuth, withdrawalLimiter, async (req, res) => {
     try {
       const users = await loadUsers();
       const u = findUserById(users, req.session.userId);
@@ -508,9 +534,16 @@ export function registerMarketplaceRoutes(app, deps) {
       if (req.body.title != null) {
         const t = String(req.body.title).trim();
         if (!t) return res.status(400).json({ error: "Title cannot be empty" });
+        if (t.length > MAX_TITLE_LEN) {
+          return res
+            .status(400)
+            .json({ error: `Title is required (max ${MAX_TITLE_LEN} characters).` });
+        }
         patch.title = t;
       }
-      if (req.body.description != null) patch.description = req.body.description;
+      if (req.body.description != null) {
+        patch.description = String(req.body.description).slice(0, MAX_DESC_LEN);
+      }
       if (req.body.condition != null) patch.condition = req.body.condition;
       if (req.body.pickupArea != null) patch.pickupArea = req.body.pickupArea;
       if (req.body.pickupNotes != null) patch.pickupNotes = req.body.pickupNotes;
@@ -629,6 +662,14 @@ export function registerMarketplaceRoutes(app, deps) {
     try {
       const listing = await getListingById(req.params.id);
       if (!listing) return res.status(404).end();
+      const viewerId = req.session.userId;
+      const isOwner = listing.sellerId === viewerId;
+      if (listing.status !== "active" && !isOwner) {
+        const order = (await listOrdersForUser(viewerId)).find(
+          (o) => o.listingId === listing.id
+        );
+        if (!order) return res.status(404).end();
+      }
       const idx = Number.parseInt(req.params.index, 10);
       const key = listing.photoKeys[idx];
       if (!key || !isSafeMarketplacePhotoKey(key, listing.id)) {
@@ -651,7 +692,7 @@ export function registerMarketplaceRoutes(app, deps) {
     }
   });
 
-  app.post("/api/marketplace/checkout", requireAuth, async (req, res) => {
+  app.post("/api/marketplace/checkout", requireAuth, checkoutLimiter, async (req, res) => {
     try {
       const users = await loadUsers();
       const buyer = findUserById(users, req.session.userId);
@@ -716,7 +757,6 @@ export function registerMarketplaceRoutes(app, deps) {
 
       const session = await stripe.checkout.sessions.create({
         mode: "payment",
-        payment_method_types: ["card"],
         client_reference_id: String(buyer.id),
         metadata: {
           productType: "marketplace",
@@ -784,7 +824,11 @@ export function registerMarketplaceRoutes(app, deps) {
       const updated = await updateOrderStatus(order.id, {
         status: "seller_ready",
         sellerReadyAt: now,
+        fromStatus: "paid",
       });
+      if (!updated) {
+        return res.status(409).json({ error: "This order was already updated." });
+      }
       const users = await loadUsers();
       res.json({
         order: enrichOrder(updated, users, findUserById, req.session.userId),
@@ -809,7 +853,11 @@ export function registerMarketplaceRoutes(app, deps) {
       const updated = await updateOrderStatus(order.id, {
         status: "completed",
         completedAt: now,
+        fromStatus: ["paid", "seller_ready"],
       });
+      if (!updated) {
+        return res.status(409).json({ error: "This order was already updated." });
+      }
       const users = await loadUsers();
       res.json({
         order: enrichOrder(updated, users, findUserById, req.session.userId),
@@ -844,8 +892,11 @@ export function registerMarketplaceRoutes(app, deps) {
       if (!existsSync(filePath)) {
         return res.status(404).json({ error: "File missing on server" });
       }
-      const name = listing.digitalFileName || listing.digitalFileKey;
-      res.setHeader("Content-Disposition", `attachment; filename="${name.replace(/"/g, "")}"`);
+      const name = String(listing.digitalFileName || listing.digitalFileKey).replace(
+        /[\r\n"]+/g,
+        " "
+      );
+      res.setHeader("Content-Disposition", `attachment; filename="${name}"`);
       createReadStream(filePath).pipe(res);
     } catch (e) {
       console.error(e);
@@ -855,7 +906,7 @@ export function registerMarketplaceRoutes(app, deps) {
 
   app.get("/api/admin/marketplace-reports", adminLimiter, async (req, res) => {
     const key = req.get("x-admin-key");
-    if (!key || key !== ADMIN_KEY) {
+    if (!secretEquals(key, ADMIN_KEY)) {
       return res.status(401).json({ error: "Invalid admin key" });
     }
     try {
@@ -885,7 +936,7 @@ export function registerMarketplaceRoutes(app, deps) {
 
   app.post("/api/admin/marketplace-reports/:id/dismiss", adminLimiter, async (req, res) => {
     const key = req.get("x-admin-key");
-    if (!key || key !== ADMIN_KEY) {
+    if (!secretEquals(key, ADMIN_KEY)) {
       return res.status(401).json({ error: "Invalid admin key" });
     }
     try {
@@ -903,7 +954,7 @@ export function registerMarketplaceRoutes(app, deps) {
     adminLimiter,
     async (req, res) => {
       const key = req.get("x-admin-key");
-      if (!key || key !== ADMIN_KEY) {
+      if (!secretEquals(key, ADMIN_KEY)) {
         return res.status(401).json({ error: "Invalid admin key" });
       }
       try {
@@ -920,7 +971,7 @@ export function registerMarketplaceRoutes(app, deps) {
 
   app.get("/api/admin/withdrawals", adminLimiter, async (req, res) => {
     const key = req.get("x-admin-key");
-    if (!key || key !== ADMIN_KEY) {
+    if (!secretEquals(key, ADMIN_KEY)) {
       return res.status(401).json({ error: "Invalid admin key" });
     }
     try {
@@ -945,7 +996,7 @@ export function registerMarketplaceRoutes(app, deps) {
 
   app.post("/api/admin/withdrawals/:id/mark-paid", adminLimiter, async (req, res) => {
     const key = req.get("x-admin-key");
-    if (!key || key !== ADMIN_KEY) {
+    if (!secretEquals(key, ADMIN_KEY)) {
       return res.status(401).json({ error: "Invalid admin key" });
     }
     try {
@@ -961,7 +1012,7 @@ export function registerMarketplaceRoutes(app, deps) {
 
   app.post("/api/admin/withdrawals/:id/cancel", adminLimiter, async (req, res) => {
     const key = req.get("x-admin-key");
-    if (!key || key !== ADMIN_KEY) {
+    if (!secretEquals(key, ADMIN_KEY)) {
       return res.status(401).json({ error: "Invalid admin key" });
     }
     try {

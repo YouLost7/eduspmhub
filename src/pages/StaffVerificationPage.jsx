@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 const STORAGE_KEY = "eduspmhub_staff_admin_key";
@@ -24,6 +24,15 @@ export default function StaffVerificationPage() {
   const [wdBusyId, setWdBusyId] = useState("");
   const [finance, setFinance] = useState(null);
   const [financeErr, setFinanceErr] = useState("");
+  // Each panel refetches independently (auto-load, manual refresh, and
+  // after actions like approve/dismiss), so each gets its own "latest
+  // request wins" guard to stop a slow response overwriting a newer one —
+  // e.g. loading with one key then quickly clearing it shouldn't leave
+  // stale data on screen once the clear has taken effect.
+  const pendingReqRef = useRef(0);
+  const mpReportsReqRef = useRef(0);
+  const withdrawalsReqRef = useRef(0);
+  const financeReqRef = useRef(0);
 
   useEffect(() => {
     try {
@@ -37,6 +46,7 @@ export default function StaffVerificationPage() {
   }, []);
 
   const fetchMarketplaceReports = useCallback(async () => {
+    const requestId = ++mpReportsReqRef.current;
     if (!adminKey.trim()) {
       setMpReports([]);
       return;
@@ -47,17 +57,20 @@ export default function StaffVerificationPage() {
         headers: { "X-Admin-Key": adminKey.trim() },
       });
       const data = await res.json().catch(() => ({}));
+      if (mpReportsReqRef.current !== requestId) return;
       if (!res.ok) {
         setMpReports([]);
         return;
       }
       setMpReports(data.reports || []);
     } catch {
+      if (mpReportsReqRef.current !== requestId) return;
       setMpReports([]);
     }
   }, [adminKey]);
 
   const fetchWithdrawals = useCallback(async () => {
+    const requestId = ++withdrawalsReqRef.current;
     if (!adminKey.trim()) {
       setWithdrawals([]);
       return;
@@ -68,17 +81,20 @@ export default function StaffVerificationPage() {
         headers: { "X-Admin-Key": adminKey.trim() },
       });
       const data = await res.json().catch(() => ({}));
+      if (withdrawalsReqRef.current !== requestId) return;
       if (!res.ok) {
         setWithdrawals([]);
         return;
       }
       setWithdrawals(data.withdrawals || []);
     } catch {
+      if (withdrawalsReqRef.current !== requestId) return;
       setWithdrawals([]);
     }
   }, [adminKey]);
 
   const fetchFinance = useCallback(async () => {
+    const requestId = ++financeReqRef.current;
     if (!adminKey.trim()) {
       setFinance(null);
       return;
@@ -90,6 +106,7 @@ export default function StaffVerificationPage() {
         headers: { "X-Admin-Key": adminKey.trim() },
       });
       const data = await res.json().catch(() => ({}));
+      if (financeReqRef.current !== requestId) return;
       if (!res.ok) {
         setFinance(null);
         setFinanceErr(data.error || `Finance summary failed (${res.status})`);
@@ -97,12 +114,14 @@ export default function StaffVerificationPage() {
       }
       setFinance(data.summary || null);
     } catch {
+      if (financeReqRef.current !== requestId) return;
       setFinance(null);
       setFinanceErr("Could not load finance summary.");
     }
   }, [adminKey]);
 
   const fetchPending = useCallback(async () => {
+    const requestId = ++pendingReqRef.current;
     setLoadErr("");
     setBanner({ text: "", ok: true });
     if (!adminKey.trim()) {
@@ -116,6 +135,7 @@ export default function StaffVerificationPage() {
         headers: { "X-Admin-Key": adminKey.trim() },
       });
       const data = await res.json().catch(() => ({}));
+      if (pendingReqRef.current !== requestId) return;
       if (!res.ok) {
         setLoadErr(data.error || `Request failed (${res.status})`);
         setPending([]);
@@ -123,6 +143,7 @@ export default function StaffVerificationPage() {
       }
       setPending(data.educators || []);
     } catch {
+      if (pendingReqRef.current !== requestId) return;
       setLoadErr("Network error — is the API running? Use npm run dev:all.");
       setPending([]);
     }

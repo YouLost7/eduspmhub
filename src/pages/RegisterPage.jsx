@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { isLikelySchoolEmail } from "../utils/emailValidation.js";
@@ -52,8 +52,13 @@ export default function RegisterPage() {
   const [terms, setTerms] = useState(false);
   const [status, setStatus] = useState({ text: "", color: "" });
   const [busy, setBusy] = useState(false);
+  const navigateTimeoutRef = useRef(null);
 
   const pwdMeta = useMemo(() => passwordStrength(password), [password]);
+
+  useEffect(() => {
+    return () => clearTimeout(navigateTimeoutRef.current);
+  }, []);
 
   async function onSubmit(e) {
     e.preventDefault();
@@ -142,7 +147,10 @@ export default function RegisterPage() {
       } else {
         setStatus({ text: t("auth.accountCreatedStudent"), color: "#15803d" });
       }
-      window.setTimeout(() => navigate("/browse", { replace: true }), 800);
+      navigateTimeoutRef.current = window.setTimeout(
+        () => navigate("/browse", { replace: true }),
+        800
+      );
     } catch (err) {
       setStatus({ text: err.message || t("auth.registrationFailed"), color: "#b91c1c" });
     } finally {

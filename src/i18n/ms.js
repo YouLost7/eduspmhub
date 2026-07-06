@@ -7,6 +7,7 @@ export default {
     contact: "Hubungi",
     profile: "Profil",
     save: "Simpan",
+    saving: "Menyimpan…",
     loading: "Memuatkan…",
     loadingSession: "Memuatkan sesi anda…",
     logOut: "Log keluar",
@@ -222,6 +223,7 @@ export default {
     close: "Tutup",
     paymentCheckoutMissing: "URL pembayaran tidak dikembalikan",
     paymentStartError: "Tidak dapat memulakan pembayaran",
+    autoEnrolFailed: "Tidak dapat menambah kursus ini secara automatik selepas log masuk. Sila cuba daftar semula di bawah.",
     openDetailsFor: "Buka butiran untuk {{title}}",
     devPaymentMode:
       "Mod pembayaran dev: jika kunci Stripe tidak dikonfigurasi, kursus berbayar menggunakan mock tempatan dan masih memberi akses untuk ujian.",
@@ -340,6 +342,7 @@ export default {
     ordersTitle: "Pesanan pasaran",
     ordersLoadError: "Tidak dapat memuatkan pesanan",
     paymentConfirmed: "Pembayaran disahkan.",
+    paymentConfirmError: "Belum dapat mengesahkan pembayaran anda.",
     purchaseComplete: "Pembelian selesai.",
     markedReady: "Ditandakan sedia untuk diambil.",
     orderCompleted: "Terima kasih — pesanan selesai.",

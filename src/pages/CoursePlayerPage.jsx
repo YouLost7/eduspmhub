@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { apiJson } from "../api.js";
@@ -17,20 +17,27 @@ export default function CoursePlayerPage() {
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(true);
   const [signedPdfUrl, setSignedPdfUrl] = useState("");
+  const requestIdRef = useRef(0);
 
   const load = useCallback(async () => {
     if (!courseId) return;
+    // Tracks the most recent load, so a slow response for a course the
+    // student has since navigated away from can't overwrite what's on
+    // screen for the course they're now viewing.
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     setErr("");
     try {
       const data = await apiJson(`/api/course-access/${encodeURIComponent(courseId)}`);
+      if (requestIdRef.current !== requestId) return;
       setPayload(data);
       setProgress(data.progress || null);
     } catch (e) {
+      if (requestIdRef.current !== requestId) return;
       setPayload(null);
       setErr(e.message || t("coursePlayer.loadError"));
     } finally {
-      setLoading(false);
+      if (requestIdRef.current === requestId) setLoading(false);
     }
   }, [courseId, t]);
 

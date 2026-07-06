@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { apiJson } from "../api.js";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -18,13 +18,19 @@ export default function MarketplaceListingPage() {
   const [reportReason, setReportReason] = useState("not_educational");
   const [reportDetails, setReportDetails] = useState("");
   const [meta, setMeta] = useState(null);
+  const requestIdRef = useRef(0);
 
   const load = useCallback(async () => {
+    // Guards against a slow response for a listing the user has navigated
+    // away from overwriting the one they're now viewing.
+    const requestId = ++requestIdRef.current;
     setErr("");
     try {
       const data = await apiJson(`/api/marketplace/listings/${encodeURIComponent(listingId)}`);
+      if (requestIdRef.current !== requestId) return;
       setListing(data.listing || null);
     } catch (e) {
+      if (requestIdRef.current !== requestId) return;
       setListing(null);
       setErr(e.message || t("marketplace.listingLoadError"));
     }
@@ -37,7 +43,7 @@ export default function MarketplaceListingPage() {
   useEffect(() => {
     apiJson("/api/marketplace/meta")
       .then(setMeta)
-      .catch(() => {});
+      .catch((e) => console.error("[marketplace] could not load meta", e));
   }, []);
 
   useEffect(() => {
@@ -107,7 +113,7 @@ export default function MarketplaceListingPage() {
         <div className="marketplace-detail-photos">
           {listing.photoUrls?.length > 0 ? (
             listing.photoUrls.map((url) => (
-              <img key={url} src={url} alt="" className="marketplace-detail-photo" />
+              <img key={url} src={url} alt="" className="marketplace-detail-photo" loading="lazy" />
             ))
           ) : (
             <div className="marketplace-card-thumb marketplace-card-thumb--empty marketplace-detail-photo">

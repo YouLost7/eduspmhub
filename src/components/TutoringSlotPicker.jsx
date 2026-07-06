@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiJson } from "../api.js";
 import { useI18n } from "../i18n/I18nContext.jsx";
 
@@ -26,6 +26,7 @@ export default function TutoringSlotPicker({
   const [estimate, setEstimate] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
+  const requestIdRef = useRef(0);
 
   const hoursLabel = useMemo(
     () =>
@@ -37,20 +38,25 @@ export default function TutoringSlotPicker({
 
   const load = useCallback(async () => {
     if (!tutorId || !hours) return;
+    // Guards against a slow response for a previous hours/tutor selection
+    // overwriting the slots shown for the current selection.
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     setErr("");
     try {
       const data = await apiJson(
         `/api/tutoring/tutors/${encodeURIComponent(tutorId)}/slots?hours=${encodeURIComponent(hours)}&days=21`
       );
+      if (requestIdRef.current !== requestId) return;
       const list = Array.isArray(data.slots) ? data.slots : [];
       setSlots(list);
       setEstimate(data.estimatedTotalLabel || "");
     } catch (e) {
+      if (requestIdRef.current !== requestId) return;
       setSlots([]);
       setErr(e.message || t("slotPicker.loadError"));
     } finally {
-      setLoading(false);
+      if (requestIdRef.current === requestId) setLoading(false);
     }
   }, [tutorId, hours, t]);
 

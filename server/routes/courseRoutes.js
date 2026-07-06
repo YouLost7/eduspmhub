@@ -15,8 +15,9 @@ export function registerCourseRoutes(app, deps) {
     requireAuth,
     CATALOG,
     loadUsers,
+    getUserById,
     loadEnrollments,
-    saveEnrollments,
+    addCourseEnrollment,
     loadEducatorCourses,
     findUserById,
     toPublicTutorProfile,
@@ -328,8 +329,7 @@ export function registerCourseRoutes(app, deps) {
       const ctx = await courseAccessContext(req.session.userId, courseId);
       if (ctx.err) return res.status(ctx.err).json({ error: ctx.msg });
       const { course } = ctx;
-      const users = await loadUsers();
-      const owner = findUserById(users, course.educatorId);
+      const owner = await getUserById(course.educatorId);
       const pages = normalizeLessonPages(course.lessonPages, course.lessons);
       const lessonPages = pages.map((p) => {
         const ev = p.embedVideo;
@@ -402,7 +402,10 @@ export function registerCourseRoutes(app, deps) {
       res.json({ progress });
     } catch (e) {
       console.error(e);
-      res.status(400).json({ error: e.message || "Could not save progress" });
+      // Only surface the specific, expected validation message; anything
+      // else (e.g. a DB error) could leak internal details to the client.
+      const message = e.message === "Invalid lesson index" ? e.message : "Could not save progress";
+      res.status(400).json({ error: message });
     }
   });
 
@@ -432,11 +435,8 @@ export function registerCourseRoutes(app, deps) {
       }
       const enroll = await loadEnrollments();
       const list = enroll[req.session.userId] || [];
-      if (!list.includes(courseId)) {
-        list.push(courseId);
-        enroll[req.session.userId] = list;
-        await saveEnrollments(enroll);
-      }
+      await addCourseEnrollment(req.session.userId, courseId);
+      if (!list.includes(courseId)) list.push(courseId);
       const courses = [];
       for (const id of list) {
         const r = await resolveStudentEnrolledCourseRow(id, users, ecList);

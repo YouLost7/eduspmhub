@@ -1,5 +1,16 @@
 import { getAdminFinanceSummary } from "../admin/finance.js";
-import { normalizePersonName } from "../validation.js";
+import { normalizePersonName, secretEquals } from "../validation.js";
+
+/**
+ * Regenerates the session id before establishing a new login, so a session
+ * id an attacker fixed onto a victim (e.g. via a cookie set from another
+ * page) can't be hijacked once that victim authenticates.
+ */
+function regenerateSession(req) {
+  return new Promise((resolve, reject) => {
+    req.session.regenerate((err) => (err ? reject(err) : resolve()));
+  });
+}
 
 export function registerAuthAdminRoutes(app, deps) {
   const {
@@ -7,10 +18,13 @@ export function registerAuthAdminRoutes(app, deps) {
     loginLimiter,
     adminLimiter,
     ADMIN_KEY,
+    isProd,
     LICENSE_DIR,
     isSafeLicenseStorageKey,
     loadUsers,
-    saveUsers,
+    getUserById,
+    insertUser,
+    updateUser,
     findUserByEmail,
     findUserById,
     toPublicUser,
@@ -27,8 +41,7 @@ export function registerAuthAdminRoutes(app, deps) {
     if (!req.session.userId) {
       return res.json({ user: null });
     }
-    const users = await loadUsers();
-    const u = findUserById(users, req.session.userId);
+    const u = await getUserById(req.session.userId);
     if (!u) {
       req.session.destroy(() => {});
       return res.json({ user: null });
@@ -66,6 +79,12 @@ export function registerAuthAdminRoutes(app, deps) {
 
       if (password.length < 8) {
         return res.status(400).json({ error: "Password must be at least 8 characters" });
+      }
+      if (password.length > 200) {
+        // bcrypt itself silently truncates at 72 bytes; the real point of a
+        // cap here is to stop a request forcing expensive hashing work over
+        // an arbitrarily large string.
+        return res.status(400).json({ error: "Password is too long (max 200 characters)" });
       }
 
       if (role === "student") {
@@ -125,9 +144,18 @@ export function registerAuthAdminRoutes(app, deps) {
         createdAt: new Date().toISOString(),
       };
 
-      users.push(user);
-      await saveUsers(users);
+      try {
+        await insertUser(user);
+      } catch (e) {
+        // Unique violation on id/email: guards against two concurrent
+        // registrations for the same email racing past the check above.
+        if (e?.code === "23505") {
+          return res.status(409).json({ error: "An account with this email already exists" });
+        }
+        throw e;
+      }
 
+      await regenerateSession(req);
       req.session.userId = user.id;
       res.status(201).json({ user: toPublicUser(user) });
     } catch (e) {
@@ -151,6 +179,7 @@ export function registerAuthAdminRoutes(app, deps) {
       if (!ok) {
         return res.status(401).json({ error: "Invalid email or password" });
       }
+      await regenerateSession(req);
       req.session.userId = user.id;
       res.json({ user: toPublicUser(user) });
     } catch (e) {
@@ -162,7 +191,13 @@ export function registerAuthAdminRoutes(app, deps) {
   app.post("/api/auth/logout", (req, res) => {
     req.session.destroy((err) => {
       if (err) return res.status(500).json({ error: "Logout failed" });
-      res.clearCookie("eduspmhub.sid");
+      // Must match the cookie options used when the session was created
+      // (server/index.js), or some browsers won't actually clear it.
+      res.clearCookie("eduspmhub.sid", {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: isProd,
+      });
       res.json({ ok: true });
     });
   });
@@ -170,7 +205,7 @@ export function registerAuthAdminRoutes(app, deps) {
   /** Admin: educators awaiting verification (for staff review queue). */
   app.get("/api/admin/educators-pending", adminLimiter, async (req, res) => {
     const key = req.get("x-admin-key");
-    if (!key || key !== ADMIN_KEY) {
+    if (!secretEquals(key, ADMIN_KEY)) {
       return res.status(403).json({ error: "Forbidden" });
     }
     const users = await loadUsers();
@@ -191,7 +226,7 @@ export function registerAuthAdminRoutes(app, deps) {
   /** Admin: download submitted licence file for review (not exposed to students). */
   app.get("/api/admin/educator/:id/license", adminLimiter, async (req, res) => {
     const key = req.get("x-admin-key");
-    if (!key || key !== ADMIN_KEY) {
+    if (!secretEquals(key, ADMIN_KEY)) {
       return res.status(403).json({ error: "Forbidden" });
     }
     const users = await loadUsers();
@@ -219,7 +254,7 @@ export function registerAuthAdminRoutes(app, deps) {
   /** Dev / ops: verify an educator by email. Send header X-Admin-Key */
   app.post("/api/admin/verify-educator", adminLimiter, async (req, res) => {
     const key = req.get("x-admin-key");
-    if (!key || key !== ADMIN_KEY) {
+    if (!secretEquals(key, ADMIN_KEY)) {
       return res.status(403).json({ error: "Forbidden" });
     }
     const { email } = req.body;
@@ -236,13 +271,13 @@ export function registerAuthAdminRoutes(app, deps) {
       });
     }
     u.verified = true;
-    await saveUsers(users);
+    await updateUser(u);
     res.json({ ok: true, user: toPublicUser(u) });
   });
 
   app.get("/api/admin/finance-summary", adminLimiter, async (req, res) => {
     const key = req.get("x-admin-key");
-    if (!key || key !== ADMIN_KEY) {
+    if (!secretEquals(key, ADMIN_KEY)) {
       return res.status(401).json({ error: "Invalid admin key" });
     }
     try {

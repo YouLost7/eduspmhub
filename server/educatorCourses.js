@@ -23,25 +23,57 @@ export async function loadEducatorCourses() {
     .filter(Boolean);
 }
 
-export async function saveEducatorCourses(list) {
+/**
+ * Single-row lookup by id. Prefer this over `loadEducatorCourses()` +
+ * `.find(...)` wherever only one specific course is needed — e.g. resolving
+ * course access for a single lesson view or progress update, which happens
+ * on every lesson navigation and shouldn't scan every educator's course.
+ */
+export async function getEducatorCourseById(id) {
+  if (!id) return null;
   const db = await getDb();
-  await sqlite.run(db, "DELETE FROM educator_courses");
-  for (const c of list) {
-    if (!c || typeof c !== "object") continue;
-    const id = String(c.id || "").trim();
-    if (!id) continue;
-    await sqlite.run(
-      db,
-      "INSERT INTO educator_courses (id, educator_id, status, updated_at, data) VALUES (?, ?, ?, ?, ?)",
-      [
-        id,
-        String(c.educatorId || ""),
-        String(c.status || ""),
-        String(c.updatedAt || c.createdAt || ""),
-        JSON.stringify(c),
-      ]
-    );
+  const row = await sqlite.get(db, "SELECT data FROM educator_courses WHERE id = ?", [
+    String(id),
+  ]);
+  if (!row) return null;
+  try {
+    return JSON.parse(row.data);
+  } catch {
+    return null;
   }
+}
+
+/**
+ * Atomically creates or replaces a single course row, keyed by id. Callers
+ * used to mutate one course in a JS array then re-save the whole table,
+ * which let concurrent educators clobber each other's courses (or, on a
+ * crash mid-rewrite, delete every educator's courses at once).
+ */
+export async function upsertEducatorCourse(course) {
+  const db = await getDb();
+  const id = String(course?.id || "").trim();
+  await sqlite.run(
+    db,
+    `INSERT INTO educator_courses (id, educator_id, status, updated_at, data)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT (id) DO UPDATE SET
+       educator_id = excluded.educator_id,
+       status = excluded.status,
+       updated_at = excluded.updated_at,
+       data = excluded.data`,
+    [
+      id,
+      String(course?.educatorId || ""),
+      String(course?.status || ""),
+      String(course?.updatedAt || course?.createdAt || ""),
+      JSON.stringify(course),
+    ]
+  );
+}
+
+export async function deleteEducatorCourseById(id) {
+  const db = await getDb();
+  await sqlite.run(db, "DELETE FROM educator_courses WHERE id = ?", [String(id)]);
 }
 
 /** Same shape as CATALOG rows for browse / enrolment lists */

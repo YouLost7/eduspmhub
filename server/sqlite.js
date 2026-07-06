@@ -40,6 +40,40 @@ async function get(_db, sql, params = []) {
   return res.rows[0] || null;
 }
 
+/**
+ * Runs `fn` against a single client wrapped in BEGIN/COMMIT, rolling back on
+ * error. Use whenever multiple statements must be applied atomically as a
+ * unit (e.g. writes across more than one table that other reads join on).
+ */
+async function withTransaction(_db, fn) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const tx = {
+      run: async (sql, params = []) => {
+        const res = await client.query(toPgParams(sql), params);
+        return { ...res, changes: res.rowCount ?? 0 };
+      },
+      get: async (sql, params = []) => {
+        const res = await client.query(toPgParams(sql), params);
+        return res.rows[0] || null;
+      },
+      all: async (sql, params = []) => {
+        const res = await client.query(toPgParams(sql), params);
+        return res.rows;
+      },
+    };
+    const result = await fn(tx);
+    await client.query("COMMIT");
+    return result;
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
 async function readJsonMaybe(path, fallback) {
   try {
     const raw = await readFile(path, "utf8");
@@ -73,17 +107,22 @@ async function migrateLegacyJsonIfNeeded(client) {
     }
   }
 
-  if ((await tableCount(client, "enrollments")) === 0) {
+  if ((await tableCount(client, "course_enrollments")) === 0) {
     const enroll = await readJsonMaybe(ENROLLMENTS_JSON_PATH, {});
     if (enroll && typeof enroll === "object") {
+      const now = new Date().toISOString();
       for (const [uid, ids] of Object.entries(enroll)) {
         const list = Array.isArray(ids) ? ids : [];
-        await client.query(
-          `INSERT INTO enrollments (user_id, data)
-           VALUES ($1, $2)
-           ON CONFLICT (user_id) DO UPDATE SET data = excluded.data`,
-          [String(uid), JSON.stringify(list)]
-        );
+        for (const cid of list) {
+          const courseId = String(cid || "").trim();
+          if (!courseId) continue;
+          await client.query(
+            `INSERT INTO course_enrollments (user_id, course_id, enrolled_at)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (user_id, course_id) DO NOTHING`,
+            [String(uid), courseId, now]
+          );
+        }
       }
     }
   }
@@ -114,6 +153,68 @@ async function migrateLegacyJsonIfNeeded(client) {
       }
     }
   }
+}
+
+async function migrateCourseProgressCompletionsIfNeeded(client) {
+  const cols = await client.query(
+    `SELECT 1 FROM information_schema.columns
+      WHERE table_name = 'course_progress' AND column_name = 'completed_lessons'`
+  );
+  if (cols.rowCount === 0) return;
+
+  const { rows } = await client.query(
+    `SELECT user_id, course_id, completed_lessons, updated_at FROM course_progress`
+  );
+  for (const row of rows) {
+    let arr = [];
+    try {
+      const parsed = JSON.parse(row.completed_lessons || "[]");
+      if (Array.isArray(parsed)) arr = parsed;
+    } catch {
+      arr = [];
+    }
+    for (const n of arr) {
+      const idx = Number.parseInt(String(n), 10);
+      if (!Number.isFinite(idx) || idx < 0) continue;
+      await client.query(
+        `INSERT INTO course_lesson_completions (user_id, course_id, lesson_index, completed_at)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (user_id, course_id, lesson_index) DO NOTHING`,
+        [row.user_id, row.course_id, idx, row.updated_at || new Date().toISOString()]
+      );
+    }
+  }
+  await client.query(`ALTER TABLE course_progress DROP COLUMN completed_lessons`);
+}
+
+async function migrateEnrollmentsTableIfNeeded(client) {
+  const exists = await client.query(
+    `SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'enrollments'`
+  );
+  if (exists.rowCount === 0) return;
+
+  const { rows } = await client.query(`SELECT user_id, data FROM enrollments`);
+  const now = new Date().toISOString();
+  for (const row of rows) {
+    let list = [];
+    try {
+      const parsed = JSON.parse(row.data || "[]");
+      if (Array.isArray(parsed)) list = parsed;
+    } catch {
+      list = [];
+    }
+    for (const cid of list) {
+      const courseId = String(cid || "").trim();
+      if (!courseId) continue;
+      await client.query(
+        `INSERT INTO course_enrollments (user_id, course_id, enrolled_at)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (user_id, course_id) DO NOTHING`,
+        [row.user_id, courseId, now]
+      );
+    }
+  }
+  await client.query(`DROP TABLE enrollments`);
 }
 
 function buildPoolConfig() {
@@ -159,19 +260,29 @@ async function ensureDb() {
     )`
   );
   await client.query(
-    `CREATE TABLE IF NOT EXISTS enrollments (
-      user_id TEXT PRIMARY KEY,
-      data TEXT NOT NULL
+    `CREATE TABLE IF NOT EXISTS course_enrollments (
+      user_id TEXT NOT NULL,
+      course_id TEXT NOT NULL,
+      enrolled_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, course_id)
     )`
   );
   await client.query(
     `CREATE TABLE IF NOT EXISTS course_progress (
       user_id TEXT NOT NULL,
       course_id TEXT NOT NULL,
-      completed_lessons TEXT NOT NULL DEFAULT '[]',
       last_lesson_index INTEGER NOT NULL DEFAULT 0,
       updated_at TEXT NOT NULL,
       PRIMARY KEY (user_id, course_id)
+    )`
+  );
+  await client.query(
+    `CREATE TABLE IF NOT EXISTS course_lesson_completions (
+      user_id TEXT NOT NULL,
+      course_id TEXT NOT NULL,
+      lesson_index INTEGER NOT NULL,
+      completed_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, course_id, lesson_index)
     )`
   );
   await client.query(
@@ -389,6 +500,15 @@ async function ensureDb() {
     "CREATE INDEX IF NOT EXISTS idx_course_progress_user ON course_progress(user_id)"
   );
   await client.query(
+    "CREATE INDEX IF NOT EXISTS idx_course_lesson_completions_user_course ON course_lesson_completions(user_id, course_id)"
+  );
+  await client.query(
+    "CREATE INDEX IF NOT EXISTS idx_course_enrollments_user ON course_enrollments(user_id)"
+  );
+  await client.query(
+    "CREATE INDEX IF NOT EXISTS idx_course_enrollments_course ON course_enrollments(course_id)"
+  );
+  await client.query(
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_payments_provider_session ON payments(provider, provider_session_id)"
   );
   await client.query(
@@ -444,6 +564,8 @@ async function ensureDb() {
   );
 
   await migrateLegacyJsonIfNeeded(client);
+  await migrateCourseProgressCompletionsIfNeeded(client);
+  await migrateEnrollmentsTableIfNeeded(client);
   await client.query(
     "DELETE FROM tutoring_bookings WHERE status IN ('awaiting_payment', 'cancelled')"
   );
@@ -461,4 +583,5 @@ export const sqlite = {
   run,
   get,
   all,
+  withTransaction,
 };

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { apiJson } from "../api.js";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -21,6 +21,8 @@ export default function MyBookingsPage() {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState("");
   const [reviewDraft, setReviewDraft] = useState({});
+  const requestIdRef = useRef(0);
+  const confirmedSessionRef = useRef("");
 
   const isEducator = user?.role === "educator";
 
@@ -39,16 +41,19 @@ export default function MyBookingsPage() {
   );
 
   const load = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     setErr("");
     try {
       const data = await apiJson("/api/tutoring/bookings");
+      if (requestIdRef.current !== requestId) return;
       setBookings(Array.isArray(data.bookings) ? data.bookings : []);
     } catch (e) {
+      if (requestIdRef.current !== requestId) return;
       setErr(e.message || t("bookings.loadError"));
       setBookings([]);
     } finally {
-      setLoading(false);
+      if (requestIdRef.current === requestId) setLoading(false);
     }
   }, [t]);
 
@@ -59,8 +64,19 @@ export default function MyBookingsPage() {
   useEffect(() => {
     const paymentStatus = searchParams.get("payment");
     const sessionId = searchParams.get("session_id");
+    const isMock = searchParams.get("mock") === "1";
     if (!user || user.role !== "student") return;
     if (paymentStatus !== "success") return;
+    // A "success" URL with neither a real session to confirm nor the mock
+    // flag isn't a payment we actually confirmed anything for (e.g. a
+    // hand-edited URL) — don't claim it was.
+    if (!sessionId && !isMock) return;
+    // Guards against double-confirming the same session (React StrictMode's
+    // double-invoke in dev, or this effect re-running before the query
+    // params are cleared).
+    const confirmKey = sessionId || "mock";
+    if (confirmedSessionRef.current === confirmKey) return;
+    confirmedSessionRef.current = confirmKey;
     let cancelled = false;
     (async () => {
       try {
@@ -81,7 +97,10 @@ export default function MyBookingsPage() {
           setSearchParams(next, { replace: true });
         }
       } catch (e) {
-        if (!cancelled) setErr(e.message || t("bookings.confirmPaymentError"));
+        if (!cancelled) {
+          confirmedSessionRef.current = "";
+          setErr(e.message || t("bookings.confirmPaymentError"));
+        }
       }
     })();
     return () => {

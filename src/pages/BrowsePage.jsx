@@ -29,6 +29,8 @@ export default function BrowsePage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailErr, setDetailErr] = useState("");
   const [staleApiHint, setStaleApiHint] = useState("");
+  const [actionBusyId, setActionBusyId] = useState("");
+  const detailPanelRef = useRef(null);
 
   const subjectParam = searchParams.get("subject");
   const courseFocus = searchParams.get("course");
@@ -106,11 +108,47 @@ export default function BrowsePage() {
   useEffect(() => {
     if (!courseFocus) return;
     const onKey = (e) => {
-      if (e.key === "Escape") closeDetail();
+      if (e.key === "Escape") {
+        closeDetail();
+        return;
+      }
+      // Basic focus trap: keep Tab from moving focus out to the page
+      // underneath while the modal is open.
+      if (e.key === "Tab" && detailPanelRef.current) {
+        const focusable = detailPanelRef.current.querySelectorAll(
+          'a[href], button:not([disabled]), input, textarea, select, [tabindex]:not([tabindex="-1"])'
+        );
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [courseFocus, closeDetail]);
+
+  // Moves focus into the dialog when it opens, and returns it to whatever
+  // triggered it (e.g. the "Details" link) when it closes — without this,
+  // keyboard/screen-reader users are left focused on a background element
+  // hidden behind the modal.
+  useEffect(() => {
+    if (!courseFocus || detailLoading) return;
+    const previouslyFocused = document.activeElement;
+    const id = window.setTimeout(() => {
+      detailPanelRef.current?.querySelector(".course-detail-close")?.focus();
+    }, 0);
+    return () => {
+      window.clearTimeout(id);
+      if (previouslyFocused instanceof HTMLElement) previouslyFocused.focus();
+    };
+  }, [courseFocus, detailLoading]);
 
   const visibleCourses = useMemo(() => {
     if (!subjectDecoded) return courses;
@@ -118,6 +156,8 @@ export default function BrowsePage() {
   }, [courses, subjectDecoded]);
 
   async function enroll(courseId) {
+    if (actionBusyId) return false;
+    setActionBusyId(courseId);
     try {
       await apiJson("/api/my-courses/enroll", {
         method: "POST",
@@ -129,10 +169,14 @@ export default function BrowsePage() {
     } catch (e) {
       setErr(e.message);
       return false;
+    } finally {
+      setActionBusyId("");
     }
   }
 
   async function checkout(courseId) {
+    if (actionBusyId) return false;
+    setActionBusyId(courseId);
     try {
       const data = await apiJson("/api/payments/checkout", {
         method: "POST",
@@ -144,6 +188,7 @@ export default function BrowsePage() {
       return true;
     } catch (e) {
       setErr(e.message || t("browse.paymentStartError"));
+      setActionBusyId("");
       return false;
     }
   }
@@ -164,7 +209,8 @@ export default function BrowsePage() {
         const next = new URLSearchParams(searchParams);
         next.delete("enroll");
         setSearchParams(next, { replace: true });
-      } catch {
+      } catch (e) {
+        setErr(e.message || t("browse.autoEnrolFailed"));
         processedAutoEnroll.current.delete(en);
       }
     })();
@@ -320,17 +366,19 @@ export default function BrowsePage() {
                   <button
                     type="button"
                     className="solid-btn browse-enrol"
+                    disabled={Boolean(actionBusyId)}
                     onClick={() => checkout(c.id)}
                   >
-                    {t("browse.buyNow")}
+                    {actionBusyId === c.id ? t("common.saving") : t("browse.buyNow")}
                   </button>
                 ) : (
                   <button
                     type="button"
                     className="solid-btn browse-enrol"
+                    disabled={Boolean(actionBusyId)}
                     onClick={() => enroll(c.id)}
                   >
-                    {t("browse.enrol")}
+                    {actionBusyId === c.id ? t("common.saving") : t("browse.enrol")}
                   </button>
                 )
               )}
@@ -360,6 +408,7 @@ export default function BrowsePage() {
           onClick={closeDetail}
         >
           <div
+            ref={detailPanelRef}
             className="course-detail-panel"
             role="dialog"
             aria-modal="true"
@@ -433,21 +482,23 @@ export default function BrowsePage() {
                       <button
                         type="button"
                         className="solid-btn"
+                        disabled={Boolean(actionBusyId)}
                         onClick={async () => {
                           await checkout(detail.id);
                         }}
                       >
-                        {t("browse.buyThisCourse")}
+                        {actionBusyId === detail.id ? t("common.saving") : t("browse.buyThisCourse")}
                       </button>
                     ) : (
                       <button
                         type="button"
                         className="solid-btn"
+                        disabled={Boolean(actionBusyId)}
                         onClick={async () => {
                           if (await enroll(detail.id)) closeDetail();
                         }}
                       >
-                        {t("browse.enrolThisCourse")}
+                        {actionBusyId === detail.id ? t("common.saving") : t("browse.enrolThisCourse")}
                       </button>
                     )
                   )}

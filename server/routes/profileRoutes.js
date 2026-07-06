@@ -4,8 +4,8 @@ export function registerProfileRoutes(app, deps) {
     runLicenseUpload,
     runProfilePhotoUpload,
     loadUsers,
-    saveUsers,
-    findUserById,
+    getUserById,
+    updateUser,
     toPublicUser,
     unlink,
     resolvedLicenseMeta,
@@ -97,8 +97,7 @@ export function registerProfileRoutes(app, deps) {
         }
       }
 
-      users[idx] = u;
-      await saveUsers(users);
+      await updateUser(u);
       res.json({ user: toPublicUser(u) });
     } catch (e) {
       console.error(e);
@@ -130,8 +129,7 @@ export function registerProfileRoutes(app, deps) {
       const meta = resolvedLicenseMeta(req.file);
       u.licenseMimeType = meta?.mime || req.file.mimetype;
       u.licenseUploadedAt = new Date().toISOString();
-      users[idx] = u;
-      await saveUsers(users);
+      await updateUser(u);
       if (oldKey && oldKey !== req.file.filename && isSafeLicenseStorageKey(oldKey)) {
         const oldPath = path.join(LICENSE_DIR, oldKey);
         await unlink(oldPath).catch(() => {});
@@ -169,8 +167,7 @@ export function registerProfileRoutes(app, deps) {
       u.avatarStorageKey = req.file.filename;
       u.avatarMimeType = meta?.mime || req.file.mimetype || "image/jpeg";
       u.avatarUploadedAt = new Date().toISOString();
-      users[idx] = u;
-      await saveUsers(users);
+      await updateUser(u);
       if (oldKey && oldKey !== req.file.filename && isSafeAvatarStorageKey(oldKey)) {
         await unlinkAvatarFile(oldKey);
       }
@@ -192,8 +189,7 @@ export function registerProfileRoutes(app, deps) {
       delete u.avatarStorageKey;
       delete u.avatarMimeType;
       delete u.avatarUploadedAt;
-      users[idx] = u;
-      await saveUsers(users);
+      await updateUser(u);
       if (oldKey && isSafeAvatarStorageKey(oldKey)) await unlinkAvatarFile(oldKey);
       res.json({ user: toPublicUser(u) });
     } catch (e) {
@@ -206,8 +202,7 @@ export function registerProfileRoutes(app, deps) {
     try {
       const userId =
         typeof req.params.userId === "string" ? req.params.userId.trim() : req.params.userId;
-      const users = await loadUsers();
-      const target = findUserById(users, userId);
+      const target = await getUserById(userId);
       if (!target?.avatarStorageKey || !isSafeAvatarStorageKey(target.avatarStorageKey)) {
         return res.status(404).end();
       }

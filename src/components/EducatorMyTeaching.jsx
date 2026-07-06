@@ -95,6 +95,7 @@ export default function EducatorMyTeaching() {
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const [busyId, setBusyId] = useState("");
+  const [creatingCourse, setCreatingCourse] = useState(false);
 
   const [nTitle, setNTitle] = useState("");
   const [nSubject, setNSubject] = useState("Mathematics");
@@ -159,6 +160,7 @@ export default function EducatorMyTeaching() {
 
   async function createCourse(e) {
     e.preventDefault();
+    if (creatingCourse) return;
     setMsg("");
     setErr("");
     const title = nTitle.trim();
@@ -166,6 +168,7 @@ export default function EducatorMyTeaching() {
       setErr("Enter a course title.");
       return;
     }
+    setCreatingCourse(true);
     try {
       await apiJson("/api/educator/courses", {
         method: "POST",
@@ -189,6 +192,8 @@ export default function EducatorMyTeaching() {
       await load();
     } catch (ex) {
       setErr(ex.message || "Could not create course.");
+    } finally {
+      setCreatingCourse(false);
     }
   }
 
@@ -582,8 +587,8 @@ export default function EducatorMyTeaching() {
             />
             <span>{t("teaching.publishImmediately")}</span>
           </label>
-          <button type="submit" className="solid-btn">
-            {t("teaching.saveCourse")}
+          <button type="submit" className="solid-btn" disabled={creatingCourse}>
+            {creatingCourse ? t("common.saving") : t("teaching.saveCourse")}
           </button>
         </form>
       </section>

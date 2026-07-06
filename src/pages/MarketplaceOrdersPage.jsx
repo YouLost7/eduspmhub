@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { apiJson } from "../api.js";
 import { useI18n } from "../i18n/I18nContext.jsx";
@@ -10,6 +10,9 @@ export default function MarketplaceOrdersPage() {
   const [err, setErr] = useState("");
   const [okMsg, setOkMsg] = useState("");
   const [loading, setLoading] = useState(true);
+  const [busyOrderId, setBusyOrderId] = useState("");
+  const requestIdRef = useRef(0);
+  const confirmedSessionRef = useRef("");
 
   const statusLabel = useCallback(
     (status) => {
@@ -23,16 +26,19 @@ export default function MarketplaceOrdersPage() {
   );
 
   const load = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     setErr("");
     try {
       const data = await apiJson("/api/marketplace/orders");
+      if (requestIdRef.current !== requestId) return;
       setOrders(Array.isArray(data.orders) ? data.orders : []);
     } catch (e) {
+      if (requestIdRef.current !== requestId) return;
       setOrders([]);
       setErr(e.message || t("marketplace.ordersLoadError"));
     } finally {
-      setLoading(false);
+      if (requestIdRef.current === requestId) setLoading(false);
     }
   }, [t]);
 
@@ -42,7 +48,15 @@ export default function MarketplaceOrdersPage() {
 
   useEffect(() => {
     const sessionId = searchParams.get("session_id");
-    if (searchParams.get("payment") === "success" && sessionId) {
+    if (searchParams.get("payment") !== "success") return;
+    // Guards against double-confirming the same session (React StrictMode's
+    // double-invoke in dev, or this effect re-running before the query
+    // params are cleared).
+    const confirmKey = sessionId || "no-session";
+    if (confirmedSessionRef.current === confirmKey) return;
+    confirmedSessionRef.current = confirmKey;
+
+    if (sessionId) {
       apiJson("/api/payments/confirm-session", {
         method: "POST",
         body: { sessionId },
@@ -51,7 +65,10 @@ export default function MarketplaceOrdersPage() {
           setOkMsg(t("marketplace.paymentConfirmed"));
           load();
         })
-        .catch(() => load())
+        .catch((e) => {
+          confirmedSessionRef.current = "";
+          setErr(e.message || t("marketplace.paymentConfirmError"));
+        })
         .finally(() => {
           const next = new URLSearchParams(searchParams);
           next.delete("payment");
@@ -59,7 +76,7 @@ export default function MarketplaceOrdersPage() {
           next.delete("order");
           setSearchParams(next, { replace: true });
         });
-    } else if (searchParams.get("payment") === "success") {
+    } else {
       setOkMsg(t("marketplace.purchaseComplete"));
       const next = new URLSearchParams(searchParams);
       next.delete("payment");
@@ -70,22 +87,30 @@ export default function MarketplaceOrdersPage() {
   }, [searchParams, setSearchParams, load, t]);
 
   async function markReady(orderId) {
+    if (busyOrderId) return;
+    setBusyOrderId(orderId);
     try {
       await apiJson(`/api/marketplace/orders/${orderId}/seller-ready`, { method: "POST" });
       setOkMsg(t("marketplace.markedReady"));
-      load();
+      await load();
     } catch (e) {
       setErr(e.message);
+    } finally {
+      setBusyOrderId("");
     }
   }
 
   async function confirmReceived(orderId) {
+    if (busyOrderId) return;
+    setBusyOrderId(orderId);
     try {
       await apiJson(`/api/marketplace/orders/${orderId}/confirm`, { method: "POST" });
       setOkMsg(t("marketplace.orderCompleted"));
-      load();
+      await load();
     } catch (e) {
       setErr(e.message);
+    } finally {
+      setBusyOrderId("");
     }
   }
 
@@ -133,8 +158,13 @@ export default function MarketplaceOrdersPage() {
                   </button>
                 )}
                 {o.canConfirmReceived && (
-                  <button type="button" className="btn btn-secondary" onClick={() => confirmReceived(o.id)}>
-                    {t("marketplace.confirmReceived")}
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    disabled={Boolean(busyOrderId)}
+                    onClick={() => confirmReceived(o.id)}
+                  >
+                    {busyOrderId === o.id ? t("common.saving") : t("marketplace.confirmReceived")}
                   </button>
                 )}
               </div>
@@ -157,8 +187,13 @@ export default function MarketplaceOrdersPage() {
                 </p>
               </div>
               {o.canMarkReady && (
-                <button type="button" className="btn btn-secondary" onClick={() => markReady(o.id)}>
-                  {t("marketplace.readyForPickup")}
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={Boolean(busyOrderId)}
+                  onClick={() => markReady(o.id)}
+                >
+                  {busyOrderId === o.id ? t("common.saving") : t("marketplace.readyForPickup")}
                 </button>
               )}
             </li>

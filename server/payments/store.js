@@ -233,7 +233,8 @@ export async function listUserTransactions(userId) {
      FROM payments p
      WHERE p.user_id = ?
        AND p.status != 'pending'
-     ORDER BY COALESCE(p.paid_at, p.created_at) DESC`,
+     ORDER BY COALESCE(p.paid_at, p.created_at) DESC
+     LIMIT 300`,
     [String(userId)]
   );
 }
