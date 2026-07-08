@@ -491,6 +491,11 @@ const withdrawalLimiter = makeLimiter({
   max: 10,
   message: "Too many withdrawal requests. Please try again later.",
 });
+const forgotPasswordLimiter = makeLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 8,
+  message: "Too many password reset attempts. Please try again later.",
+});
 
 app.use("/api", apiCors);
 app.use(
@@ -719,8 +724,10 @@ const authAdminDeps = {
   registerLimiter,
   loginLimiter,
   adminLimiter,
+  forgotPasswordLimiter,
   ADMIN_KEY,
   isProd: IS_PROD,
+  APP_BASE_URL,
   LICENSE_DIR,
   isSafeLicenseStorageKey,
   loadUsers,

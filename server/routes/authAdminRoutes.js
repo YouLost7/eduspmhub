@@ -1,5 +1,12 @@
 import { getAdminFinanceSummary } from "../admin/finance.js";
 import { normalizePersonName, secretEquals } from "../validation.js";
+import { sendMail } from "../mail.js";
+import {
+  createPasswordResetToken,
+  findValidPasswordResetToken,
+  consumePasswordResetToken,
+  invalidatePasswordResetTokensForUser,
+} from "../passwordReset.js";
 
 /**
  * Regenerates the session id before establishing a new login, so a session
@@ -17,8 +24,10 @@ export function registerAuthAdminRoutes(app, deps) {
     registerLimiter,
     loginLimiter,
     adminLimiter,
+    forgotPasswordLimiter,
     ADMIN_KEY,
     isProd,
+    APP_BASE_URL,
     LICENSE_DIR,
     isSafeLicenseStorageKey,
     loadUsers,
@@ -200,6 +209,91 @@ export function registerAuthAdminRoutes(app, deps) {
       });
       res.json({ ok: true });
     });
+  });
+
+  const GENERIC_FORGOT_PASSWORD_MESSAGE =
+    "If an account exists for that email, we've sent a password reset link.";
+
+  app.post("/api/auth/forgot-password", forgotPasswordLimiter, async (req, res) => {
+    try {
+      const email = String(req.body?.email || "").trim().toLowerCase();
+      if (!email) {
+        return res.status(400).json({ error: "Email is required" });
+      }
+      const users = await loadUsers();
+      const user = findUserByEmail(users, email);
+      // Always send the same response whether or not the account exists —
+      // otherwise this endpoint could be used to check which emails are
+      // registered.
+      if (user) {
+        // Only the latest reset link should work — invalidate any older ones first.
+        await invalidatePasswordResetTokensForUser(user.id);
+        const { rawToken } = await createPasswordResetToken(user.id);
+        const resetUrl = `${APP_BASE_URL}/reset-password?token=${encodeURIComponent(rawToken)}`;
+        sendMail({
+          to: user.email,
+          subject: "[EduSPM Hub] Reset your password",
+          text: [
+            `Hi ${user.fullName},`,
+            ``,
+            `We received a request to reset your EduSPM Hub password.`,
+            `This link is valid for 1 hour: ${resetUrl}`,
+            ``,
+            `If you didn't request this, you can safely ignore this email — your password will stay the same.`,
+          ].join("\n"),
+        }).catch((e) => console.error("[auth] forgot-password email failed", e));
+      }
+      res.json({ ok: true, message: GENERIC_FORGOT_PASSWORD_MESSAGE });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: "Could not process request" });
+    }
+  });
+
+  /** Lets the reset-password page show a friendly "link expired" state before the user finishes typing a new password. */
+  app.get("/api/auth/reset-password/:token", forgotPasswordLimiter, async (req, res) => {
+    try {
+      const valid = await findValidPasswordResetToken(req.params.token);
+      res.json({ valid: Boolean(valid) });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: "Could not validate reset link" });
+    }
+  });
+
+  app.post("/api/auth/reset-password", forgotPasswordLimiter, async (req, res) => {
+    try {
+      const token = String(req.body?.token || "").trim();
+      const password = String(req.body?.password || "");
+      if (!token || !password) {
+        return res.status(400).json({ error: "Token and new password are required" });
+      }
+      if (password.length < 8) {
+        return res.status(400).json({ error: "Password must be at least 8 characters" });
+      }
+      if (password.length > 200) {
+        return res.status(400).json({ error: "Password is too long (max 200 characters)" });
+      }
+      const consumed = await consumePasswordResetToken(token);
+      if (!consumed) {
+        return res.status(400).json({
+          error: "This reset link is invalid or has expired. Request a new one.",
+        });
+      }
+      const user = await getUserById(consumed.userId);
+      if (!user) {
+        return res.status(400).json({ error: "Account not found" });
+      }
+      user.passwordHash = await bcrypt.hash(password, 10);
+      await updateUser(user);
+      // Any other outstanding reset links for this account are no longer
+      // useful (and shouldn't remain valid) once the password has changed.
+      await invalidatePasswordResetTokensForUser(user.id);
+      res.json({ ok: true });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: "Could not reset password" });
+    }
   });
 
   /** Admin: educators awaiting verification (for staff review queue). */

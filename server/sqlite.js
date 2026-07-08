@@ -268,6 +268,16 @@ async function ensureDb() {
     )`
   );
   await client.query(
+    `CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      token_hash TEXT NOT NULL UNIQUE,
+      expires_at TEXT NOT NULL,
+      used_at TEXT,
+      created_at TEXT NOT NULL
+    )`
+  );
+  await client.query(
     `CREATE TABLE IF NOT EXISTS course_progress (
       user_id TEXT NOT NULL,
       course_id TEXT NOT NULL,
@@ -509,6 +519,12 @@ async function ensureDb() {
     "CREATE INDEX IF NOT EXISTS idx_course_enrollments_course ON course_enrollments(course_id)"
   );
   await client.query(
+    "CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user ON password_reset_tokens(user_id)"
+  );
+  await client.query(
+    "CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_expires ON password_reset_tokens(expires_at)"
+  );
+  await client.query(
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_payments_provider_session ON payments(provider, provider_session_id)"
   );
   await client.query(
@@ -570,6 +586,10 @@ async function ensureDb() {
     "DELETE FROM tutoring_bookings WHERE status IN ('awaiting_payment', 'cancelled')"
   );
   await client.query("DELETE FROM payments WHERE status = 'pending'");
+  await client.query(
+    "DELETE FROM password_reset_tokens WHERE used_at IS NOT NULL OR expires_at < $1",
+    [new Date().toISOString()]
+  );
   client.release();
   return pool;
 }

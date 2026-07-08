@@ -102,6 +102,9 @@ export default function LoginPage() {
                 required
               />
             </div>
+            <p className="helper" style={{ margin: "-0.35rem 0 0.75rem", textAlign: "right" }}>
+              <Link to="/forgot-password">{t("auth.forgotPasswordLink")}</Link>
+            </p>
 
             <motion.button
               className="btn"

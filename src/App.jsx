@@ -11,6 +11,8 @@ import DashboardPage from "./pages/DashboardPage.jsx";
 const PlatformPage = lazy(() => import("./pages/PlatformPage.jsx"));
 const LoginPage = lazy(() => import("./pages/LoginPage.jsx"));
 const RegisterPage = lazy(() => import("./pages/RegisterPage.jsx"));
+const ForgotPasswordPage = lazy(() => import("./pages/ForgotPasswordPage.jsx"));
+const ResetPasswordPage = lazy(() => import("./pages/ResetPasswordPage.jsx"));
 const BrowsePage = lazy(() => import("./pages/BrowsePage.jsx"));
 const MyCoursesPage = lazy(() => import("./pages/MyCoursesPage.jsx"));
 const CoursePlayerPage = lazy(() => import("./pages/CoursePlayerPage.jsx"));
@@ -38,6 +40,8 @@ export default function App() {
         <Route path="/staff" element={<StaffVerificationPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
 
         <Route element={<ProtectedRoute />}>
           <Route element={<UserAppShell />}>
