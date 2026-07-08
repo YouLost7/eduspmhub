@@ -133,9 +133,6 @@ export default function DashboardPage() {
           </nav>
           <div className="top-actions">
             <LanguageSwitcher />
-            <span className="search" aria-hidden="true">
-              ⌕
-            </span>
             {loading ? (
               <span className="link-btn">…</span>
             ) : user ? (
